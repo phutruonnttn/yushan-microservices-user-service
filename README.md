@@ -1,8 +1,22 @@
 # Yushan User Service
 
-> 👤 **User Service for Yushan Webnovel Platform.** - Manages user accounts, profiles, authentication, preferences, and user-related operations for the gamified web novel reading platform.
+> 👤 **User Service for Yushan Platform (Phase 2 - Microservices)** - Manages user accounts, profiles, authentication, and user-related operations for the gamified web novel reading platform.
 
-# Yushan Platform - User Service Setup Guide
+## 📋 Overview
+
+User Service is one of the main microservices of Yushan Platform (Phase 2), responsible for managing users, authentication, and user-related operations. This service uses JWT for authentication, Kafka to publish events, and Redis for caching.
+
+## 🚀 Tech Stack
+
+- **Framework**: Spring Boot 3.4.10
+- **Language**: Java 21
+- **Spring Cloud**: 2024.0.2
+- **Database**: PostgreSQL 15+ (MyBatis)
+- **Cache**: Redis
+- **Message Queue**: Apache Kafka
+- **Build Tool**: Maven
+- **Service Discovery**: Eureka Client
+- **Config**: Spring Cloud Config Client
 
 ## Architecture Overview
 
@@ -38,29 +52,33 @@
 ```
 
 ---
-## Prerequisites
+## 🚦 Getting Started
 
-Before setting up the User Service, ensure you have:
+### Prerequisites
+
+Before setting up User Service, ensure you have:
 1. **Java 21** installed
 2. **Maven 3.8+** or use the included Maven wrapper
 3. **Eureka Service Registry** running
-4. **PostgreSQL 15+** (for user data storage)
-5. **Redis** (for session management and caching)
+4. **Config Server** running
+5. **PostgreSQL 15+** (for user data storage)
+6. **Redis** (for session management and caching)
+7. **Kafka** (for event publishing)
 
 ---
-## Step 1: Start Eureka Service Registry
+### Quick Setup
 
-**IMPORTANT**: The Eureka Service Registry must be running before starting any microservice.
+**IMPORTANT**: Eureka Service Registry and Config Server must be running before starting any microservice.
 
 ```bash
-# Clone the service registry repository
-git clone https://github.com/maugus0/yushan-platform-service-registry
-cd yushan-platform-service-registry
+# Clone repository
+git clone https://github.com/phutruonnttn/yushan-microservices-user-service.git
+cd yushan-microservices-user-service
 
 # Option 1: Run with Docker (Recommended)
 docker-compose up -d
 
-# Option 2: Run locally
+# Option 2: Run locally (requires PostgreSQL, Redis, Kafka to be running)
 ./mvnw spring-boot:run
 ```
 
@@ -68,21 +86,6 @@ docker-compose up -d
 
 - Open: http://localhost:8761
 - You should see the Eureka dashboard
-
----
-
-## Step 2: Clone the User Service Repository
-
-```bash
-git clone https://github.com/maugus0/yushan-user-service.git
-cd yushan-user-service
-
-# Option 1: Run with Docker (Recommended)
-docker-compose up -d
-
-# Option 2: Run locally (requires PostgreSQL 15 and Redis to be running beforehand)
-./mvnw spring-boot:run
-```
 
 ---
 
@@ -108,143 +111,138 @@ Instances currently registered with Eureka:
 
 ---
 
-## API Endpoints
+## 📡 API Endpoints
 
 ### Health Check
-- **GET** `/api/v1/health` - Service health status
+- `GET /api/v1/health` - Service health status
 
 ### Authentication
-- **POST** `/api/v1/auth/register` - Register new user account
-- **POST** `/api/v1/auth/login` - User login
-- **POST** `/api/v1/auth/logout` - User logout
-- **POST** `/api/v1/auth/refresh` - Refresh access token
-- **POST** `/api/v1/auth/forgot-password` - Initiate password reset
-- **POST** `/api/v1/auth/reset-password` - Reset password with token
-- **POST** `/api/v1/auth/verify-email` - Verify email address
-- **POST** `/api/v1/auth/resend-verification` - Resend verification email
+- `POST /api/v1/auth/register` - Register new user account (includes email verification)
+- `POST /api/v1/auth/login` - User login
+- `POST /api/v1/auth/logout` - User logout
+- `POST /api/v1/auth/refresh` - Refresh access token
+- `POST /api/v1/auth/send-email` - Send email verification code
 
 ### User Management
-- **GET** `/api/v1/users/{userId}` - Get user profile
-- **PUT** `/api/v1/users/{userId}` - Update user profile
-- **DELETE** `/api/v1/users/{userId}` - Delete user account
-- **GET** `/api/v1/users/{userId}/stats` - Get user statistics
-- **PUT** `/api/v1/users/{userId}/avatar` - Update avatar
-- **PUT** `/api/v1/users/{userId}/password` - Change password
+- `GET /api/v1/users/me` - Get current user info
+- `GET /api/v1/users/{userId}` - Get user info by ID
+- `PUT /api/v1/users/{id}/profile` - Update profile
+- `POST /api/v1/users/send-email-change-verification` - Send email change verification code
+- `POST /api/v1/users/batch/get` - Get multiple users (batch) - **POST method**
+- `GET /api/v1/users/all/ranking` - Get all users for ranking
 
-### User Preferences
-- **GET** `/api/v1/users/{userId}/preferences` - Get user preferences
-- **PUT** `/api/v1/users/{userId}/preferences` - Update preferences
-- **GET** `/api/v1/users/{userId}/reading-preferences` - Get reading preferences
-- **PUT** `/api/v1/users/{userId}/reading-preferences` - Update reading preferences
-
-### User Settings
-- **GET** `/api/v1/users/{userId}/settings` - Get user settings
-- **PUT** `/api/v1/users/{userId}/settings` - Update settings
-- **PUT** `/api/v1/users/{userId}/settings/notifications` - Update notification settings
-- **PUT** `/api/v1/users/{userId}/settings/privacy` - Update privacy settings
-
-### User Search
-- **GET** `/api/v1/users/search` - Search users by username/email
-- **GET** `/api/v1/users/{userId}/public-profile` - Get public profile
-
-### User Sessions
-- **GET** `/api/v1/users/{userId}/sessions` - Get active sessions
-- **DELETE** `/api/v1/users/{userId}/sessions/{sessionId}` - Revoke session
-- **DELETE** `/api/v1/users/{userId}/sessions` - Revoke all sessions
+### Library Management
+- `GET /api/v1/library` - Get personal library (with pagination)
+- `POST /api/v1/library/{novelId}` - Add novel to library
+- `DELETE /api/v1/library/{novelId}` - Remove from library
+- `DELETE /api/v1/library/batch` - Batch remove novels from library
+- `GET /api/v1/library/check/{novelId}` - Check if novel is in library
+- `GET /api/v1/library/{novelId}` - Get novel info (progress) in library
+- `PATCH /api/v1/library/{novelId}/progress` - Update reading progress
 
 ### Admin Endpoints
-- **GET** `/api/v1/admin/users` - List all users (paginated)
-- **PUT** `/api/v1/admin/users/{userId}/ban` - Ban user
-- **PUT** `/api/v1/admin/users/{userId}/unban` - Unban user
-- **PUT** `/api/v1/admin/users/{userId}/role` - Update user role
+- `GET /api/v1/admin/users` - List users (paginated, filtered)
+- `POST /api/v1/admin/promote-to-admin` - Promote to Admin
+- `PUT /api/v1/admin/users/{uuid}/status` - Update user status
+
+### Author Endpoints
+- `POST /api/v1/author/send-email-author-verification` - Send author verification email
+- `POST /api/v1/author/upgrade-to-author` - Upgrade to author
 
 ---
 
-## Key Features
+## ✨ Key Features
 
 ### 🔐 Authentication & Authorization
-- JWT-based authentication
-- OAuth2 integration (Google, Facebook)
-- Email verification
-- Password reset functionality
-- Multi-factor authentication (MFA)
+- JWT-based authentication with refresh tokens
+- Email verification with OTP (Redis)
+- Password hashing with BCrypt
+- Role-based access control (RBAC): READER, AUTHOR, ADMIN
 - Session management with Redis
-- Role-based access control (RBAC)
 
 ### 👤 User Profile Management
-- Comprehensive user profiles
-- Avatar upload and management
-- Bio and personal information
-- Social links
-- Profile visibility settings
-- User statistics display
+- Comprehensive user profile management
+- Avatar and personal information
+- User statistics
+- Batch lookup users
 
-### ⚙️ User Preferences
-- Reading preferences (font, theme, layout)
-- Genre preferences
-- Language preferences
-- Content filters
-- Notification preferences
-- Privacy settings
+### 📚 Library Management
+- Personal library
+- Reading progress tracking
+- Integration with Content Service via Feign
 
-### 📱 Session Management
-- Multiple device support
-- Active session tracking
-- Session revocation
-- Remember me functionality
-- Session timeout configuration
+### 📧 Email Service
+- Send OTP code via email
+- Email verification
+- Author verification
 
-### 🔍 User Discovery
-- Username search
-- Email lookup (admin only)
-- Public profile viewing
-- User verification badges
-- User reputation system
+### 🎯 Event Publishing
+- Kafka events: `UserRegisteredEvent`, `UserLoggedInEvent`
+- Topics: `user.events`, `active`
+- Integration with Gamification Service
 
-### 🛡️ Security Features
-- Password encryption (BCrypt)
-- Account lockout after failed attempts
-- Rate limiting on authentication endpoints
-- IP-based access logging
-- Suspicious activity detection
-- GDPR compliance features
+### 🔍 Inter-service Communication
+- Feign Client: `ContentServiceClient` (validate novel/chapter)
+- JWT token forwarding in inter-service calls
 
 ---
 
-## Database Schema
+## 🏗️ Project Structure
 
-The User Service uses the following key entities:
+```
+com.yushan.user_service/
+├── controller/          # REST API endpoints
+│   ├── AuthController.java
+│   ├── UserController.java
+│   ├── LibraryController.java
+│   ├── AdminController.java
+│   └── AuthorController.java
+├── service/            # Business logic
+│   ├── AuthService.java
+│   ├── UserService.java
+│   ├── LibraryService.java
+│   ├── AdminService.java
+│   └── MailService.java
+├── dao/               # MyBatis mappers
+│   ├── UserMapper.java
+│   └── LibraryMapper.java
+├── entity/            # Database entities
+│   ├── User.java
+│   └── Library.java
+├── dto/               # Data Transfer Objects
+├── config/            # Configuration
+│   ├── SecurityConfig.java
+│   ├── KafkaProducerConfig.java
+│   └── DatabaseConfig.java
+├── security/          # Security components
+│   ├── JwtAuthenticationFilter.java
+│   └── CustomUserDetailsService.java
+└── event/             # Kafka producers
+    ├── UserEventProducer.java
+    └── UserActivityEventProducer.java
+```
 
-- **User** - Core user account information
-- **UserProfile** - Extended profile information
-- **UserPreferences** - User preferences and settings
-- **ReadingPreferences** - Reading-specific preferences
-- **UserSession** - Active user sessions
-- **UserRole** - User roles and permissions
-- **PasswordResetToken** - Password reset tokens
-- **EmailVerificationToken** - Email verification tokens
-- **UserActivity** - User activity logs
-- **BlockedUser** - User blocking relationships
+## 💾 Database Schema
+
+- **users** - User account information
+- **library** - Personal library
+- **novel_library** - Novel-library mapping
 
 ---
 
-## Next Steps
+## 🔗 Inter-service Communication
 
-Once this basic setup is working:
-1. ✅ Create database entities (User, UserProfile, UserPreferences, etc.)
-2. ✅ Set up Flyway migrations
-3. ✅ Create repositories and services
-4. ✅ Implement JWT authentication
-5. ✅ Add Feign clients for inter-service communication
-6. ✅ Set up Redis caching for session management
-7. ✅ Implement email service for verification
-8. ✅ Add OAuth2 providers
-9. ✅ Implement MFA
-10. ✅ Add security auditing
+User Service communicates with:
+- **Content Service**: Validate novel/chapter when adding to library
+- **Gamification Service**: Receives events from Kafka to process rewards
 
----
+## 📊 Monitoring
 
-## Troubleshooting
+User Service exposes metrics through:
+- Spring Boot Actuator endpoints (`/actuator/health`, `/actuator/metrics`)
+- Custom metrics: login success/failure rates, registration counts
+
+## 🐛 Troubleshooting
 
 **Problem: Service won't register with Eureka**
 - Ensure Eureka is running: `docker ps`
@@ -323,5 +321,28 @@ The User Service exposes metrics through:
 
 ---
 
-## License
+## 🛠️ Built With
+
+- [Spring Boot](https://spring.io/projects/spring-boot) - Application framework
+- [Spring Cloud](https://spring.io/projects/spring-cloud) - Microservices framework
+- [MyBatis](https://mybatis.org/) - SQL mapping framework
+- [PostgreSQL](https://www.postgresql.org/) - Database
+- [Redis](https://redis.io/) - Caching và session storage
+- [Apache Kafka](https://kafka.apache.org/) - Message queue
+- [Spring Security](https://spring.io/projects/spring-security) - Security framework
+
+## 📄 License
+
 This project is part of the Yushan Platform ecosystem.
+
+## 🔗 Links
+
+- **API Gateway**: [yushan-microservices-api-gateway](https://github.com/phutruonnttn/yushan-microservices-api-gateway)
+- **Service Registry**: [yushan-microservices-service-registry](https://github.com/phutruonnttn/yushan-microservices-service-registry)
+- **Config Server**: [yushan-microservices-config-server](https://github.com/phutruonnttn/yushan-microservices-config-server)
+- **Platform Documentation**: [yushan-platform-docs](https://github.com/phutruonnttn/yushan-platform-docs) - Complete documentation for all phases
+- **Phase 2 Architecture**: See [Phase 2 Microservices Architecture](https://github.com/phutruonnttn/yushan-platform-docs/blob/main/docs/phase2-microservices/PHASE2_MICROSERVICES_ARCHITECTURE.md)
+
+---
+
+**Yushan User Service** - User management and authentication for microservices 👤
