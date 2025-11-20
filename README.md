@@ -346,3 +346,5 @@ This project is part of the Yushan Platform ecosystem.
 ---
 
 **Yushan User Service** - User management and authentication for microservices 👤
+
+<!-- Test GitHub Actions trigger -->
