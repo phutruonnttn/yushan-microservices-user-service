@@ -1,5 +1,7 @@
 package com.yushan.user_service.entity;
 
+import com.yushan.user_service.enums.UserStatus;
+
 import java.io.Serializable;
 import java.util.Date;
 import java.util.UUID;
@@ -176,5 +178,214 @@ public class User implements Serializable {
 
     public void setLastActive(Date lastActive) {
         this.lastActive = lastActive != null ? new Date(lastActive.getTime()) : null;
+    }
+
+    // ==================== Business Logic Methods ====================
+
+    /**
+     * Change user status and update timestamp
+     */
+    public void changeStatus(UserStatus newStatus) {
+        this.status = newStatus.getCode();
+        this.updateTime = new Date();
+    }
+
+    /**
+     * Change user status with validation
+     */
+    public void changeStatusTo(UserStatus newStatus, UserStatus... allowedFromStatuses) {
+        if (allowedFromStatuses != null && allowedFromStatuses.length > 0) {
+            UserStatus currentStatus = UserStatus.fromCode(this.status);
+            boolean isAllowed = false;
+            for (UserStatus allowedStatus : allowedFromStatuses) {
+                if (currentStatus == allowedStatus) {
+                    isAllowed = true;
+                    break;
+                }
+            }
+            if (!isAllowed) {
+                throw new IllegalStateException("Cannot change status from " + currentStatus + " to " + newStatus);
+            }
+        }
+        changeStatus(newStatus);
+    }
+
+    /**
+     * Suspend user account
+     */
+    public void suspend() {
+        changeStatusTo(UserStatus.SUSPENDED, UserStatus.NORMAL);
+    }
+
+    /**
+     * Ban user account
+     */
+    public void ban() {
+        changeStatusTo(UserStatus.BANNED, UserStatus.NORMAL, UserStatus.SUSPENDED);
+    }
+
+    /**
+     * Unsuspend user account (restore to normal)
+     */
+    public void unsuspend() {
+        changeStatusTo(UserStatus.NORMAL, UserStatus.SUSPENDED);
+    }
+
+    /**
+     * Unban user account (restore to normal)
+     */
+    public void unban() {
+        changeStatusTo(UserStatus.NORMAL, UserStatus.BANNED);
+    }
+
+    /**
+     * Upgrade user to author
+     */
+    public void upgradeToAuthor() {
+        this.isAuthor = true;
+        this.updateTime = new Date();
+    }
+
+    /**
+     * Promote user to admin
+     */
+    public void promoteToAdmin() {
+        this.isAdmin = true;
+        this.updateTime = new Date();
+    }
+
+    /**
+     * Demote user from admin
+     */
+    public void demoteFromAdmin() {
+        this.isAdmin = false;
+        this.updateTime = new Date();
+    }
+
+    /**
+     * Update last login time
+     */
+    public void updateLastLogin() {
+        this.lastLogin = new Date();
+        this.updateTime = new Date();
+    }
+
+    /**
+     * Update last login time with specific date
+     */
+    public void updateLastLogin(Date loginTime) {
+        this.lastLogin = loginTime != null ? new Date(loginTime.getTime()) : new Date();
+        this.updateTime = new Date();
+    }
+
+    /**
+     * Update last active time
+     */
+    public void updateLastActive() {
+        this.lastActive = new Date();
+    }
+
+    /**
+     * Update last active time with specific date
+     */
+    public void updateLastActive(Date activeTime) {
+        this.lastActive = activeTime != null ? new Date(activeTime.getTime()) : new Date();
+    }
+
+    /**
+     * Update timestamp (updateTime)
+     */
+    public void updateTimestamp() {
+        this.updateTime = new Date();
+    }
+
+    /**
+     * Initialize as new user with default values
+     */
+    public void initializeAsNew() {
+        if (this.uuid == null) {
+            this.uuid = UUID.randomUUID();
+        }
+        Date now = new Date();
+        if (this.createTime == null) {
+            this.createTime = now;
+        }
+        if (this.updateTime == null) {
+            this.updateTime = now;
+        }
+        if (this.lastLogin == null) {
+            this.lastLogin = now;
+        }
+        if (this.lastActive == null) {
+            this.lastActive = now;
+        }
+        if (this.status == null) {
+            this.status = UserStatus.NORMAL.getCode();
+        }
+        if (this.isAuthor == null) {
+            this.isAuthor = false;
+        }
+        if (this.isAdmin == null) {
+            this.isAdmin = false;
+        }
+    }
+
+    // ==================== Helper Methods ====================
+
+    /**
+     * Check if user has normal status
+     */
+    public boolean isNormal() {
+        return UserStatus.fromCode(this.status) == UserStatus.NORMAL;
+    }
+
+    /**
+     * Check if user is suspended
+     */
+    public boolean isSuspended() {
+        return UserStatus.fromCode(this.status) == UserStatus.SUSPENDED;
+    }
+
+    /**
+     * Check if user is banned
+     */
+    public boolean isBanned() {
+        return UserStatus.fromCode(this.status) == UserStatus.BANNED;
+    }
+
+    /**
+     * Check if user is active (not suspended or banned)
+     */
+    public boolean isActive() {
+        return isNormal();
+    }
+
+    /**
+     * Check if user is an author
+     */
+    public boolean isAuthorUser() {
+        return Boolean.TRUE.equals(this.isAuthor);
+    }
+
+    /**
+     * Check if user is an admin
+     */
+    public boolean isAdminUser() {
+        return Boolean.TRUE.equals(this.isAdmin);
+    }
+
+    /**
+     * Check if user can be suspended
+     */
+    public boolean canBeSuspended() {
+        return isNormal();
+    }
+
+    /**
+     * Check if user can be banned
+     */
+    public boolean canBeBanned() {
+        UserStatus currentStatus = UserStatus.fromCode(this.status);
+        return currentStatus == UserStatus.NORMAL || currentStatus == UserStatus.SUSPENDED;
     }
 }

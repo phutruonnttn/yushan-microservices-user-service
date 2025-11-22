@@ -170,7 +170,7 @@ public class UserService {
 
         User user = userMapper.selectByPrimaryKey(userId);
         if (user != null && lastActive != null) {
-            user.setLastActive(Date.from(lastActive.atZone(ZoneId.systemDefault()).toInstant()));
+            user.updateLastActive(Date.from(lastActive.atZone(ZoneId.systemDefault()).toInstant()));
             int result = userMapper.updateByPrimaryKey(user);
             if (result > 0) {
                 log.info("Successfully updated last active time for user: {}", userId);
