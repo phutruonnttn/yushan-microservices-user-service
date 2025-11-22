@@ -8,7 +8,6 @@ import com.yushan.user_service.entity.User;
 import com.yushan.user_service.enums.Gender;
 import com.yushan.user_service.enums.UserStatus;
 import com.yushan.user_service.exception.ResourceNotFoundException;
-import com.yushan.user_service.util.RedisUtil;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.scheduling.annotation.Async;
@@ -19,7 +18,6 @@ import java.time.ZoneId;
 import java.util.Date;
 import java.util.List;
 import java.util.UUID;
-import java.util.concurrent.TimeUnit;
 
 @Slf4j
 @Service
@@ -30,9 +28,6 @@ public class UserService {
 
     @Autowired
     private MailService mailService;
-
-    @Autowired
-    private RedisUtil redisUtil;
 
     /**
      * Load a user's profile by UUID and map to response DTO
@@ -159,23 +154,41 @@ public class UserService {
 
     @Async
     public void updateLastActiveTime(UUID userId, LocalDateTime lastActive) {
-        if (userId == null) return;
-
-        String cacheKey = "active" + userId;
-
-        if (redisUtil.hasKey(cacheKey)) {
-            log.info("Skipping update for user {} as it was recently updated", userId);
+        if (userId == null) {
+            log.warn("updateLastActiveTime called with null userId");
             return;
         }
 
+        if (lastActive == null) {
+            log.warn("updateLastActiveTime called with null lastActive for userId: {}", userId);
+            return;
+        }
+
+        // Idempotency check is already done at Listener level
+        // This method just updates the database
         User user = userMapper.selectByPrimaryKey(userId);
-        if (user != null && lastActive != null) {
-            user.updateLastActive(Date.from(lastActive.atZone(ZoneId.systemDefault()).toInstant()));
-            int result = userMapper.updateByPrimaryKey(user);
-            if (result > 0) {
-                log.info("Successfully updated last active time for user: {}", userId);
-            }
-            redisUtil.set(cacheKey, "1", 5, TimeUnit.MINUTES);
+        if (user == null) {
+            log.warn("User not found for updateLastActiveTime: userId={}", userId);
+            return;
+        }
+
+        // Only update if the new timestamp is newer than the current one
+        // This prevents old events from overwriting newer timestamps
+        Date currentLastActive = user.getLastActive();
+        Date newLastActive = Date.from(lastActive.atZone(ZoneId.systemDefault()).toInstant());
+        
+        if (currentLastActive != null && !newLastActive.after(currentLastActive)) {
+            log.debug("Skipping updateLastActiveTime: new timestamp {} is not newer than current {} for user: {}", 
+                    newLastActive, currentLastActive, userId);
+            return;
+        }
+
+        user.updateLastActive(newLastActive);
+        int result = userMapper.updateByPrimaryKey(user);
+        if (result > 0) {
+            log.info("Successfully updated last active time for user: {}, new timestamp: {}", userId, newLastActive);
+        } else {
+            log.warn("Failed to update last active time for user: {} (no rows affected)", userId);
         }
     }
 
