@@ -6,8 +6,6 @@ import com.yushan.user_service.entity.User;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Service;
 
-import java.util.Date;
-
 @Service
 public class AuthorService {
 
@@ -45,8 +43,7 @@ public class AuthorService {
         }
 
         // Update user to author
-        user.setIsAuthor(true);
-        user.setUpdateTime(new Date());
+        user.upgradeToAuthor();
         userMapper.updateByPrimaryKeySelective(user);
         
         // Return updated user profile

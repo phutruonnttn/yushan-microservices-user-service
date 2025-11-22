@@ -70,14 +70,9 @@ public class AuthService {
 
         Date date = new Date();
         user.setCreateTime(date);
-        user.setUpdateTime(date);
-        user.setLastLogin(date);
-        user.setLastActive(date);
 
-        // set default user profile
-        user.setStatus(UserStatus.NORMAL.getCode());
-        user.setIsAuthor(false);
-        user.setIsAdmin(false);
+        // set default user profile using business logic
+        user.initializeAsNew();
 
         userMapper.insert(user);
 
@@ -172,8 +167,9 @@ public class AuthService {
         userEventProducer.sendUserLoggedInEvent(event);
 
         Date now = new Date();
-        user.setLastLogin(now);
-        user.setLastActive(now);
+        user.updateLastLogin(now);
+        user.updateLastActive(now);
+        user.updateTimestamp();
 
         // Prepare user info (without sensitive data)
         UserAuthResponseDTO responseDTO = createUserResponse(user);

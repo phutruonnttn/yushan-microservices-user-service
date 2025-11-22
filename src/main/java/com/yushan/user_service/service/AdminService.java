@@ -45,8 +45,7 @@ public class AdminService {
         }
 
         // Update user to admin
-        user.setIsAdmin(true);
-        user.setUpdateTime(new Date());
+        user.promoteToAdmin();
         userMapper.updateByPrimaryKeySelective(user);
 
         // Return updated user profile
@@ -74,7 +73,7 @@ public class AdminService {
 
         User userToUpdate = new User();
         userToUpdate.setUuid(userUuid);
-        userToUpdate.setStatus(newStatus.getCode());
+        userToUpdate.changeStatus(newStatus);
         userToUpdate.setUpdateTime(new Date());
 
         userMapper.updateByPrimaryKeySelective(userToUpdate);
