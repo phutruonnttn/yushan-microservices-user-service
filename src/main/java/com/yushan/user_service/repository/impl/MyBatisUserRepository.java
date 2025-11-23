@@ -46,8 +46,15 @@ public class MyBatisUserRepository implements UserRepository {
             // Insert new user
             userMapper.insert(user);
         } else {
-            // Update existing user
-            userMapper.updateByPrimaryKeySelective(user);
+            // Check if user exists - if not, insert instead of update
+            User existingUser = userMapper.selectByPrimaryKey(user.getUuid());
+            if (existingUser == null) {
+                // User doesn't exist - insert it
+                userMapper.insertSelective(user);
+            } else {
+                // Update existing user
+                userMapper.updateByPrimaryKeySelective(user);
+            }
         }
         return user;
     }

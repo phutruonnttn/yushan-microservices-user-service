@@ -1,10 +1,10 @@
 package com.yushan.user_service.controller;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
-import com.yushan.user_service.dao.UserMapper;
 import com.yushan.user_service.dto.*;
 import com.yushan.user_service.entity.User;
 import com.yushan.user_service.event.UserActivityEventProducer;
+import com.yushan.user_service.repository.UserRepository;
 import com.yushan.user_service.service.AuthService;
 import com.yushan.user_service.service.MailService;
 import com.yushan.user_service.util.JwtUtil;
@@ -51,7 +51,7 @@ public class AuthControllerTest {
     private MailService mailService;
 
     @MockBean
-    private UserMapper userMapper;
+    private UserRepository userRepository;
 
     @MockBean
     private JwtUtil jwtUtil;
@@ -162,7 +162,7 @@ public class AuthControllerTest {
         // Given
         EmailVerificationRequestDTO emailRequest = new EmailVerificationRequestDTO();
         emailRequest.setEmail("new-user@example.com");
-        when(userMapper.selectByEmail(emailRequest.getEmail())).thenReturn(null);
+        when(userRepository.findByEmail(emailRequest.getEmail())).thenReturn(null);
         doNothing().when(mailService).sendVerificationCode(emailRequest.getEmail());
 
         // When & Then
@@ -182,7 +182,7 @@ public class AuthControllerTest {
         // Given
         EmailVerificationRequestDTO emailRequest = new EmailVerificationRequestDTO();
         emailRequest.setEmail("existing-user@example.com");
-        when(userMapper.selectByEmail(emailRequest.getEmail())).thenReturn(new User());
+        when(userRepository.findByEmail(emailRequest.getEmail())).thenReturn(new User());
 
         // When & Then
         mockMvc.perform(post("/api/v1/auth/send-email")

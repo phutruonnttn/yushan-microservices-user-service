@@ -1,13 +1,13 @@
 package com.yushan.user_service.controller;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
-import com.yushan.user_service.dao.UserMapper;
 import com.yushan.user_service.dto.AuthorUpgradeRequestDTO;
 import com.yushan.user_service.dto.EmailVerificationRequestDTO;
 import com.yushan.user_service.dto.UserProfileResponseDTO;
 import com.yushan.user_service.entity.User;
 import com.yushan.user_service.enums.ErrorCode;
 import com.yushan.user_service.event.UserActivityEventProducer;
+import com.yushan.user_service.repository.UserRepository;
 import com.yushan.user_service.service.AuthorService;
 import com.yushan.user_service.service.MailService;
 import com.yushan.user_service.service.UserService;
@@ -97,7 +97,7 @@ class AuthorControllerTest {
     private RedisUtil redisUtil;
 
     @MockBean
-    private UserMapper userMapper;
+    private UserRepository userRepository;
 
     @MockBean
     private UserService userService;
@@ -133,7 +133,7 @@ class AuthorControllerTest {
         EmailVerificationRequestDTO request = new EmailVerificationRequestDTO();
         request.setEmail(testEmail);
 
-        when(userMapper.selectByEmail(testEmail)).thenReturn(testUser);
+        when(userRepository.findByEmail(testEmail)).thenReturn(testUser);
 
         // When & Then
         mockMvc.perform(post("/api/v1/author/send-email-author-verification")
@@ -154,7 +154,7 @@ class AuthorControllerTest {
         EmailVerificationRequestDTO request = new EmailVerificationRequestDTO();
         request.setEmail(testEmail);
 
-        when(userMapper.selectByEmail(testEmail)).thenReturn(null);
+        when(userRepository.findByEmail(testEmail)).thenReturn(null);
 
         // When & Then
         mockMvc.perform(post("/api/v1/author/send-email-author-verification")
@@ -176,7 +176,7 @@ class AuthorControllerTest {
         request.setEmail(testEmail);
         testUser.setIsAuthor(true);
 
-        when(userMapper.selectByEmail(testEmail)).thenReturn(testUser);
+        when(userRepository.findByEmail(testEmail)).thenReturn(testUser);
 
         // When & Then
         mockMvc.perform(post("/api/v1/author/send-email-author-verification")

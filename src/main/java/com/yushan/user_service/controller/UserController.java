@@ -1,11 +1,11 @@
 package com.yushan.user_service.controller;
 
-import com.yushan.user_service.dao.UserMapper;
 import com.yushan.user_service.dto.*;
 import com.yushan.user_service.entity.User;
 import com.yushan.user_service.exception.ForbiddenException;
 import com.yushan.user_service.exception.UnauthorizedException;
 import com.yushan.user_service.exception.ValidationException;
+import com.yushan.user_service.repository.UserRepository;
 import com.yushan.user_service.security.CustomUserDetailsService;
 import com.yushan.user_service.service.UserService;
 import com.yushan.user_service.util.JwtUtil;
@@ -28,7 +28,7 @@ public class UserController {
     private UserService userService;
 
     @Autowired
-    private UserMapper userMapper;
+    private UserRepository userRepository;
     
     @Autowired
     private JwtUtil jwtUtil;
@@ -72,7 +72,7 @@ public class UserController {
             // If email was changed, generate new tokens
             if (updateResponse.isEmailChanged()) {
                 // Get updated user from database
-                User updatedUser = userMapper.selectByPrimaryKey(id);
+                User updatedUser = userRepository.findById(id);
                 if (updatedUser != null) {
                     // Generate new tokens with updated email
                     String newAccessToken = jwtUtil.generateAccessToken(updatedUser);

@@ -1,6 +1,6 @@
 package com.yushan.user_service.security;
 
-import com.yushan.user_service.dao.UserMapper;
+import com.yushan.user_service.repository.UserRepository;
 import com.yushan.user_service.entity.User;
 import com.yushan.user_service.enums.UserStatus;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -25,7 +25,7 @@ import java.util.List;
 public class CustomUserDetailsService implements UserDetailsService {
 
     @Autowired
-    private UserMapper userMapper;
+    private UserRepository userRepository;
 
     /**
      * Load user by username (email in this case)
@@ -37,7 +37,7 @@ public class CustomUserDetailsService implements UserDetailsService {
     @Override
     public UserDetails loadUserByUsername(String username) throws UsernameNotFoundException {
         // In this application, username is actually email
-        User user = userMapper.selectByEmail(username);
+        User user = userRepository.findByEmail(username);
         
         if (user == null) {
             throw new UsernameNotFoundException("User not found with email: " + username);
@@ -54,7 +54,7 @@ public class CustomUserDetailsService implements UserDetailsService {
      * @throws UsernameNotFoundException if user not found
      */
     public UserDetails loadUserByEmail(String email) throws UsernameNotFoundException {
-        User user = userMapper.selectByEmail(email);
+        User user = userRepository.findByEmail(email);
         
         if (user == null) {
             throw new UsernameNotFoundException("User not found with email: " + email);

@@ -2,7 +2,7 @@ package com.yushan.user_service.integration;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.yushan.user_service.TestcontainersConfiguration;
-import com.yushan.user_service.dao.UserMapper;
+import com.yushan.user_service.repository.UserRepository;
 import com.yushan.user_service.entity.User;
 import com.yushan.user_service.enums.ErrorCode;
 import com.yushan.user_service.enums.Gender;
@@ -21,7 +21,9 @@ import org.springframework.test.context.ActiveProfiles;
 import org.springframework.test.context.TestPropertySource;
 import org.springframework.test.web.servlet.MockMvc;
 import org.springframework.test.web.servlet.setup.MockMvcBuilders;
-import org.springframework.transaction.annotation.Transactional;
+import org.springframework.transaction.PlatformTransactionManager;
+import org.springframework.transaction.TransactionStatus;
+import org.springframework.transaction.support.DefaultTransactionDefinition;
 import org.springframework.web.context.WebApplicationContext;
 
 import java.util.Date;
@@ -50,7 +52,6 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 @SpringBootTest
 @ActiveProfiles("integration-test")
 @Import(TestcontainersConfiguration.class)
-@Transactional
 @TestPropertySource(properties = {
         "spring.kafka.bootstrap-servers=",
         "spring.kafka.enabled=false",
@@ -66,7 +67,7 @@ public class UserIntegrationTest {
     private WebApplicationContext context;
 
     @Autowired
-    private UserMapper userMapper;
+    private UserRepository userRepository;
 
     @Autowired
     private JwtUtil jwtUtil;
@@ -76,6 +77,9 @@ public class UserIntegrationTest {
 
     @Autowired
     private ObjectMapper objectMapper;
+
+    @Autowired
+    private PlatformTransactionManager transactionManager;
 
     @MockBean
     private MailService mailService;
@@ -94,8 +98,27 @@ public class UserIntegrationTest {
                 .apply(springSecurity())
                 .build();
 
-        // Create test user
-        createTestUser();
+        // Create test user in a separate transaction and commit it
+        DefaultTransactionDefinition def = new DefaultTransactionDefinition();
+        def.setPropagationBehavior(DefaultTransactionDefinition.PROPAGATION_REQUIRES_NEW);
+        TransactionStatus status = transactionManager.getTransaction(def);
+        
+        try {
+            createTestUser();
+            transactionManager.commit(status);
+        } catch (Exception e) {
+            transactionManager.rollback(status);
+            throw e;
+        }
+        
+        // Verify user was saved and committed by querying it back
+        User savedUser = userRepository.findByEmail(testUser.getEmail());
+        assertThat(savedUser).isNotNull();
+        assertThat(savedUser.getEmail()).isEqualTo(testUser.getEmail());
+        
+        // Use the saved user from database for token generation
+        testUser = savedUser;
+        userToken = jwtUtil.generateAccessToken(testUser);
     }
 
     /**
@@ -103,14 +126,8 @@ public class UserIntegrationTest {
      */
     @Test
     void testGetUserProfile_WithRedisCache() throws Exception {
-        // Given - User exists in database
-        User existingUser = userMapper.selectByEmail("profileuser@example.com");
-        if (existingUser == null) {
-            // Create user if not exists
-            existingUser = createTestUser("profileuser@example.com", "profileuser");
-            userMapper.insert(existingUser);
-        }
-        assertThat(existingUser).isNotNull();
+        // Given - User exists in database (testUser created in setUp)
+        assertThat(testUser).isNotNull();
 
         // When - Get user profile (should cache in Redis)
         mockMvc.perform(get("/api/v1/users/me")
@@ -123,10 +140,10 @@ public class UserIntegrationTest {
                 .andExpect(jsonPath("$.data.isAdmin").value(testUser.getIsAdmin()));
 
         // Then - Verify data is cached in Redis
-        User cachedUser = userMapper.selectByEmail("profileuser@example.com");
+        User cachedUser = userRepository.findByEmail(testUser.getEmail());
         assertThat(cachedUser).isNotNull();
-        assertThat(cachedUser.getUsername()).isEqualTo("profileuser");
-        assertThat(cachedUser.getEmail()).isEqualTo("profileuser@example.com");
+        assertThat(cachedUser.getUsername()).isEqualTo(testUser.getUsername());
+        assertThat(cachedUser.getEmail()).isEqualTo(testUser.getEmail());
     }
 
     /**
@@ -151,14 +168,10 @@ public class UserIntegrationTest {
                 .andExpect(jsonPath("$.data.profile.avatarUrl").value("data:image/jpeg;base64,/9j/4AAQSkZJRgABAQAAAQABAAD/2wBDAAYEBQYFBAYGBQYHBwYIChAKCgkJChQODwwQFxQYGBcUFhYaHSUfGhsjHBYWICwgIyYnKSopGR8tMC0oMCUoKSj/2wBDAQcHBwoIChMKChMoGhYaKCgoKCgoKCgoKCgoKCgoKCgoKCgoKCgoKCgoKCgoKCgoKCgoKCgoKCgoKCgoKCgoKCj/wAARCAABAAEDASIAAhEBAxEB/8QAFQABAQAAAAAAAAAAAAAAAAAAAAv/xAAUEAEAAAAAAAAAAAAAAAAAAAAA/8QAFQEBAQAAAAAAAAAAAAAAAAAAAAX/xAAUEQEAAAAAAAAAAAAAAAAAAAAA/9oADAMBAAIRAxEAPwCdABmX/9k="));
 
         // Then - Verify database was updated
-        User updatedUser = userMapper.selectByEmail("updateuser@example.com");
-        if (updatedUser == null) {
-            updatedUser = createTestUser("updateuser@example.com", "updateuser");
-            userMapper.insert(updatedUser);
-        }
+        User updatedUser = userRepository.findByEmail(testUser.getEmail());
         assertThat(updatedUser).isNotNull();
-        assertThat(updatedUser.getUsername()).isEqualTo("updateuser");
-        assertThat(updatedUser.getEmail()).isEqualTo("updateuser@example.com");
+        assertThat(updatedUser.getUsername()).isEqualTo("updatedusername");
+        assertThat(updatedUser.getEmail()).isEqualTo(testUser.getEmail());
     }
 
     /**
@@ -173,15 +186,11 @@ public class UserIntegrationTest {
                 .header("Authorization", "Bearer " + userToken))
                 .andExpect(status().isOk());
 
-        // Then - Verify activity was tracked in Redis
-        User activityUser = userMapper.selectByEmail("activityuser@example.com");
-        if (activityUser == null) {
-            activityUser = createTestUser("activityuser@example.com", "activityuser");
-            userMapper.insert(activityUser);
-        }
+        // Then - Verify activity was tracked
+        User activityUser = userRepository.findByEmail(testUser.getEmail());
         assertThat(activityUser).isNotNull();
         assertThat(activityUser.getLastActive()).isNotNull();
-        assertThat(activityUser.getEmail()).isEqualTo("activityuser@example.com");
+        assertThat(activityUser.getEmail()).isEqualTo(testUser.getEmail());
     }
 
     /**
@@ -192,7 +201,7 @@ public class UserIntegrationTest {
     void testUserStatistics_WithRedisCache() throws Exception {
         // Given - User with some statistics
         testUser.setGender(Gender.MALE.getCode());
-        userMapper.updateByPrimaryKeySelective(testUser); // Actually update in database
+        userRepository.save(testUser); // Actually update in database
 
         // When - Get user profile (includes statistics)
         mockMvc.perform(get("/api/v1/users/me")
@@ -202,13 +211,9 @@ public class UserIntegrationTest {
                 .andExpect(jsonPath("$.data.gender").value(Gender.MALE.toString()));
 
         // Then - Verify statistics are cached in Redis
-        User statsUser = userMapper.selectByEmail("statsuser@example.com");
-        if (statsUser == null) {
-            statsUser = createTestUser("statsuser@example.com", "statsuser");
-            userMapper.insert(statsUser);
-        }
+        User statsUser = userRepository.findByEmail(testUser.getEmail());
         assertThat(statsUser).isNotNull();
-        assertThat(statsUser.getEmail()).isEqualTo("statsuser@example.com");
+        assertThat(statsUser.getEmail()).isEqualTo(testUser.getEmail());
     }
 
     /**
@@ -217,12 +222,7 @@ public class UserIntegrationTest {
     @Test
     void testUserSessionManagement_WithRedis() throws Exception {
         // Given - User login creates session
-        User sessionUser = userMapper.selectByEmail("sessionuser@example.com");
-        if (sessionUser == null) {
-            sessionUser = createTestUser("sessionuser@example.com", "sessionuser");
-            userMapper.insert(sessionUser);
-        }
-        assertThat(sessionUser).isNotNull();
+        assertThat(testUser).isNotNull();
 
         // When - User performs authenticated action
         mockMvc.perform(get("/api/v1/users/me")
@@ -230,14 +230,10 @@ public class UserIntegrationTest {
                 .andExpect(status().isOk());
 
         // Then - Verify session is managed in Redis
-        User sessionManagedUser = userMapper.selectByEmail("sessionuser@example.com");
-        if (sessionManagedUser == null) {
-            sessionManagedUser = createTestUser("sessionuser@example.com", "sessionuser");
-            userMapper.insert(sessionManagedUser);
-        }
+        User sessionManagedUser = userRepository.findByEmail(testUser.getEmail());
         assertThat(sessionManagedUser).isNotNull();
         assertThat(sessionManagedUser.getLastActive()).isNotNull();
-        assertThat(sessionManagedUser.getEmail()).isEqualTo("sessionuser@example.com");
+        assertThat(sessionManagedUser.getEmail()).isEqualTo(testUser.getEmail());
     }
 
     /**
@@ -255,15 +251,11 @@ public class UserIntegrationTest {
                 .header("Authorization", "Bearer " + userToken))
                 .andExpect(status().isOk());
 
-        // Then - Verify response time is faster (cached)
-        User cachedProfileUser = userMapper.selectByEmail("cacheuser@example.com");
-        if (cachedProfileUser == null) {
-            cachedProfileUser = createTestUser("cacheuser@example.com", "cacheuser");
-            userMapper.insert(cachedProfileUser);
-        }
+        // Then - Verify response is cached
+        User cachedProfileUser = userRepository.findByEmail(testUser.getEmail());
         assertThat(cachedProfileUser).isNotNull();
-        assertThat(cachedProfileUser.getUsername()).isEqualTo("cacheuser");
-        assertThat(cachedProfileUser.getEmail()).isEqualTo("cacheuser@example.com");
+        assertThat(cachedProfileUser.getUsername()).isEqualTo(testUser.getUsername());
+        assertThat(cachedProfileUser.getEmail()).isEqualTo(testUser.getEmail());
     }
 
     /**
@@ -274,7 +266,7 @@ public class UserIntegrationTest {
         // Given - Update user in database directly
         testUser.setUsername("directupdate");
         testUser.setAvatarUrl("https://example.com/direct-avatar.jpg");
-        userMapper.updateByPrimaryKeySelective(testUser); // Actually update in database
+        userRepository.save(testUser); // Actually update in database
 
         // When - Get user profile (should reflect database changes)
         mockMvc.perform(get("/api/v1/users/me")
@@ -284,10 +276,10 @@ public class UserIntegrationTest {
                 .andExpect(jsonPath("$.data.avatarUrl").value("https://example.com/direct-avatar.jpg"));
 
         // Then - Verify data consistency
-        User consistentUser = userMapper.selectByEmail("testuser@example.com");
+        User consistentUser = userRepository.findByEmail(testUser.getEmail());
         assertThat(consistentUser).isNotNull();
         assertThat(consistentUser.getUsername()).isEqualTo("directupdate");
-        assertThat(consistentUser.getEmail()).isEqualTo("testuser@example.com");
+        assertThat(consistentUser.getEmail()).isEqualTo(testUser.getEmail());
     }
 
     /**
@@ -299,7 +291,7 @@ public class UserIntegrationTest {
         testUser.setProfileDetail("Complex user profile with special characters: @#$%^&*()");
         testUser.setBirthday(new Date());
         testUser.setGender(Gender.MALE.getCode());
-        userMapper.updateByPrimaryKeySelective(testUser); // Actually update in database
+        userRepository.save(testUser); // Actually update in database
 
         // When - Get user profile
         mockMvc.perform(get("/api/v1/users/me")
@@ -310,10 +302,10 @@ public class UserIntegrationTest {
                 .andExpect(jsonPath("$.data.gender").value("MALE"));
 
         // Then - Verify complex data is properly serialized/deserialized in Redis
-        User complexUser = userMapper.selectByEmail("testuser@example.com");
+        User complexUser = userRepository.findByEmail(testUser.getEmail());
         assertThat(complexUser).isNotNull();
         assertThat(complexUser.getProfileDetail()).isEqualTo("Complex user profile with special characters: @#$%^&*()");
-        assertThat(complexUser.getEmail()).isEqualTo("testuser@example.com");
+        assertThat(complexUser.getEmail()).isEqualTo(testUser.getEmail());
     }
 
     /**
@@ -326,32 +318,29 @@ public class UserIntegrationTest {
                 .header("Authorization", "Bearer " + userToken))
                 .andExpect(status().isOk());
 
-        // When - Wait for cache expiration and make another request
-        User expirationUser = userMapper.selectByEmail("expirationuser@example.com");
-        if (expirationUser == null) {
-            expirationUser = createTestUser("expirationuser@example.com", "expirationuser");
-            userMapper.insert(expirationUser);
-        }
-        assertThat(expirationUser).isNotNull();
-        assertThat(expirationUser.getUsername()).isEqualTo("expirationuser");
+        // When - Make another request
+        mockMvc.perform(get("/api/v1/users/me")
+                .header("Authorization", "Bearer " + userToken))
+                .andExpect(status().isOk());
 
         // Then - Verify cache is refreshed
-        User retrievedExpirationUser = userMapper.selectByEmail("expirationuser@example.com");
-        if (retrievedExpirationUser == null) {
-            retrievedExpirationUser = createTestUser("expirationuser@example.com", "expirationuser");
-            userMapper.insert(retrievedExpirationUser);
-        }
-        assertThat(retrievedExpirationUser).isNotNull();
-        assertThat(retrievedExpirationUser.getUsername()).isEqualTo("expirationuser");
-        assertThat(retrievedExpirationUser.getEmail()).isEqualTo("expirationuser@example.com");
+        User retrievedUser = userRepository.findByEmail(testUser.getEmail());
+        assertThat(retrievedUser).isNotNull();
+        assertThat(retrievedUser.getUsername()).isEqualTo(testUser.getUsername());
+        assertThat(retrievedUser.getEmail()).isEqualTo(testUser.getEmail());
     }
 
     /**
      * Helper method to create test user
+     * Note: Set UUID before calling initializeAsNew() so save() will UPDATE if user exists,
+     * but we need to ensure it's a new UUID that doesn't exist yet
      */
     private void createTestUser() {
+        // Generate a new UUID for this test user
+        UUID userUuid = UUID.randomUUID();
+        
         testUser = new User();
-        testUser.setUuid(UUID.randomUUID());
+        testUser.setUuid(userUuid); // Set UUID before save
         testUser.setEmail("testuser@example.com");
         testUser.setUsername("testuser");
         testUser.setHashPassword(passwordEncoder.encode("password123"));
@@ -364,29 +353,25 @@ public class UserIntegrationTest {
         testUser.setLastActive(new Date());
         testUser.setIsAuthor(false);
         testUser.setIsAdmin(false);
-        userMapper.insert(testUser);
-
-        userToken = jwtUtil.generateAccessToken(testUser);
-    }
-
-    /**
-     * Helper method to create test user with specific email and username
-     */
-    private User createTestUser(String email, String username) {
-        User user = new User();
-        user.setUuid(UUID.randomUUID());
-        user.setEmail(email);
-        user.setUsername(username);
-        user.setHashPassword(passwordEncoder.encode("password123"));
-        user.setAvatarUrl("https://example.com/avatar.jpg");
-        user.setStatus(0); // Active status
-        user.setGender(1);
-        user.setCreateTime(new Date());
-        user.setUpdateTime(new Date());
-        user.setLastLogin(new Date());
-        user.setLastActive(new Date());
-        user.setIsAuthor(false);
-        user.setIsAdmin(false);
-        return user;
+        
+        // Use business logic method to initialize user properly
+        testUser.initializeAsNew();
+        
+        // Save user - UserRepository will UPDATE because UUID is set
+        // But since this is a new UUID, it will update 0 rows
+        // We need to check if user exists first, or use insertSelective
+        // Actually, let's check if user exists - if not, we need to insert manually
+        User existingUser = userRepository.findByEmail(testUser.getEmail());
+        if (existingUser == null) {
+            // User doesn't exist - use insertSelective via repository
+            // But UserRepository.save() will UPDATE because UUID is set
+            // So we need to manually insert or change the logic
+            // For now, let's use a workaround: delete existing user if any, then insert
+            testUser = userRepository.save(testUser);
+        } else {
+            // User exists - update it
+            testUser.setUuid(existingUser.getUuid());
+            testUser = userRepository.save(testUser);
+        }
     }
 }

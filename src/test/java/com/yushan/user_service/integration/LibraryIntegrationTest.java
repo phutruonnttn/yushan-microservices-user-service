@@ -5,9 +5,7 @@ import com.yushan.user_service.TestcontainersConfiguration;
 import com.yushan.user_service.client.ContentServiceClient;
 import com.yushan.user_service.client.dto.ChapterInfoDTO;
 import com.yushan.user_service.client.dto.NovelInfoDTO;
-import com.yushan.user_service.dao.LibraryMapper;
-import com.yushan.user_service.dao.NovelLibraryMapper;
-import com.yushan.user_service.dao.UserMapper;
+import com.yushan.user_service.repository.UserRepository;
 import com.yushan.user_service.entity.Library;
 import com.yushan.user_service.entity.NovelLibrary;
 import com.yushan.user_service.entity.User;
@@ -31,7 +29,6 @@ import org.springframework.test.context.ActiveProfiles;
 import org.springframework.test.context.TestPropertySource;
 import org.springframework.test.web.servlet.MockMvc;
 import org.springframework.test.web.servlet.setup.MockMvcBuilders;
-import org.springframework.transaction.annotation.Transactional;
 import org.springframework.web.context.WebApplicationContext;
 
 import java.util.*;
@@ -58,7 +55,6 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 @SpringBootTest
 @ActiveProfiles("integration-test")
 @Import(TestcontainersConfiguration.class)
-@Transactional
 @TestPropertySource(properties = {
         "spring.kafka.bootstrap-servers=",
         "spring.kafka.enabled=false",
@@ -74,13 +70,7 @@ public class LibraryIntegrationTest {
     private WebApplicationContext context;
 
     @Autowired
-    private UserMapper userMapper;
-
-    @Autowired
-    private LibraryMapper libraryMapper;
-
-    @Autowired
-    private NovelLibraryMapper novelLibraryMapper;
+    private UserRepository userRepository;
 
     @Autowired
     private JwtUtil jwtUtil;
@@ -116,9 +106,15 @@ public class LibraryIntegrationTest {
         NovelInfoDTO mockNovel = new NovelInfoDTO(1, "Test Novel", "Test Author", "cover.jpg", 100, NovelStatus.PUBLISHED.name());
         when(contentServiceClient.getNovelById(anyInt())).thenReturn(ApiResponse.success("Success", mockNovel));
 
+        // Delete existing user if exists (from previous test runs)
+        User existingUser = userRepository.findByEmail("libraryuser@example.com");
+        if (existingUser != null) {
+            userRepository.delete(existingUser.getUuid());
+        }
+
         // Create a test user
         testUser = createTestUser("libraryuser@example.com", "libraryuser", "password123");
-        userMapper.insert(testUser);
+        userRepository.save(testUser);
 
         // Create a library for the test user for tests that require it to exist beforehand
         testUserLibrary = new Library();
@@ -126,7 +122,7 @@ public class LibraryIntegrationTest {
         testUserLibrary.setUserId(testUser.getUuid());
         testUserLibrary.setCreateTime(new Date());
         testUserLibrary.setUpdateTime(new Date());
-        libraryMapper.insert(testUserLibrary);
+        userRepository.saveLibrary(testUserLibrary);
 
         testUserToken = jwtUtil.generateAccessToken(testUser);
     }
@@ -144,7 +140,7 @@ public class LibraryIntegrationTest {
                 .andExpect(jsonPath("$.message").value("Add novel to library successfully"));
 
         // Verify that the novel is in the novel_library table, linked to the correct user
-        NovelLibrary libraryItem = novelLibraryMapper.selectByUserIdAndNovelId(testUser.getUuid(), novelId);
+        NovelLibrary libraryItem = userRepository.findNovelLibraryByUserIdAndNovelId(testUser.getUuid(), novelId);
         assertThat(libraryItem).isNotNull();
         assertThat(libraryItem.getNovelId()).isEqualTo(novelId);
     }
@@ -160,7 +156,7 @@ public class LibraryIntegrationTest {
                 .andExpect(jsonPath("$.code").value(ErrorCode.SUCCESS.getCode()))
                 .andExpect(jsonPath("$.message").value("Remove novel from library successfully"));
 
-        NovelLibrary libraryItem = novelLibraryMapper.selectByUserIdAndNovelId(testUser.getUuid(), novelId);
+        NovelLibrary libraryItem = userRepository.findNovelLibraryByUserIdAndNovelId(testUser.getUuid(), novelId);
         assertThat(libraryItem).isNull();
     }
 
@@ -182,8 +178,8 @@ public class LibraryIntegrationTest {
                 .andExpect(jsonPath("$.code").value(ErrorCode.SUCCESS.getCode()))
                 .andExpect(jsonPath("$.message").value("batch remove successfully"));
 
-        assertThat(novelLibraryMapper.selectByUserIdAndNovelId(testUser.getUuid(), novelId1)).isNull();
-        assertThat(novelLibraryMapper.selectByUserIdAndNovelId(testUser.getUuid(), novelId2)).isNull();
+        assertThat(userRepository.findNovelLibraryByUserIdAndNovelId(testUser.getUuid(), novelId1)).isNull();
+        assertThat(userRepository.findNovelLibraryByUserIdAndNovelId(testUser.getUuid(), novelId2)).isNull();
     }
 
     @Test
@@ -192,11 +188,20 @@ public class LibraryIntegrationTest {
         addNovelToDb(testUserLibrary.getId(), 6, 20);
 
         // Mock the Feign client for this specific test
+        // Use any() to match any list of novel IDs, not just Arrays.asList(5, 6)
         List<NovelInfoDTO> mockNovels = Arrays.asList(
                 new NovelInfoDTO(5, "Novel 5", "Author 5", "c5.jpg",  10, NovelStatus.PUBLISHED.name()),
                 new NovelInfoDTO(6, "Novel 6", "Author 6", "c6.jpg",  20, NovelStatus.PUBLISHED.name())
         );
-        when(contentServiceClient.getNovelsByIds(Arrays.asList(5, 6))).thenReturn(ApiResponse.success("Success", mockNovels));
+        when(contentServiceClient.getNovelsByIds(any(List.class))).thenAnswer(invocation -> {
+            @SuppressWarnings("unchecked")
+            List<Integer> novelIds = invocation.getArgument(0);
+            // Filter mock novels to only include those requested
+            List<NovelInfoDTO> filtered = mockNovels.stream()
+                    .filter(novel -> novelIds.contains(novel.id()))
+                    .collect(java.util.stream.Collectors.toList());
+            return ApiResponse.success("Success", filtered);
+        });
         when(contentServiceClient.getChaptersByIds(any())).thenReturn(ApiResponse.success("Success", Collections.emptyList()));
 
 
@@ -269,7 +274,7 @@ public class LibraryIntegrationTest {
                 .andExpect(jsonPath("$.code").value(ErrorCode.SUCCESS.getCode()))
                 .andExpect(jsonPath("$.data.progress").value(75));
 
-        NovelLibrary libraryItem = novelLibraryMapper.selectByUserIdAndNovelId(testUser.getUuid(), novelId);
+        NovelLibrary libraryItem = userRepository.findNovelLibraryByUserIdAndNovelId(testUser.getUuid(), novelId);
         assertThat(libraryItem.getProgress()).isEqualTo(75);
     }
 
@@ -298,6 +303,6 @@ public class LibraryIntegrationTest {
         item.setProgress(progress);
         item.setCreateTime(new Date());
         item.setUpdateTime(new Date());
-        novelLibraryMapper.insert(item);
+        userRepository.saveNovelLibrary(item);
     }
 }

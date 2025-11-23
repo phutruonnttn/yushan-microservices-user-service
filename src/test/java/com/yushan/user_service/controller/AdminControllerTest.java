@@ -1,10 +1,10 @@
 package com.yushan.user_service.controller;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
-import com.yushan.user_service.dao.UserMapper;
 import com.yushan.user_service.dto.*;
 import com.yushan.user_service.enums.ErrorCode;
 import com.yushan.user_service.enums.UserStatus;
+import com.yushan.user_service.repository.UserRepository;
 import com.yushan.user_service.service.AdminService;
 import com.yushan.user_service.service.UserService;
 import com.yushan.user_service.util.JwtUtil;
@@ -51,7 +51,7 @@ class AdminControllerTest {
     private UserService userService;
 
     @MockBean
-    private UserMapper userMapper;
+    private UserRepository userRepository;
 
     @MockBean
     private JwtUtil jwtUtil;
