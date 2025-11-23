@@ -1,6 +1,6 @@
 package com.yushan.user_service.service;
 
-import com.yushan.user_service.dao.UserMapper;
+import com.yushan.user_service.repository.UserRepository;
 import com.yushan.user_service.dto.UserProfileResponseDTO;
 import com.yushan.user_service.dto.UserProfileUpdateRequestDTO;
 import com.yushan.user_service.dto.UserProfileUpdateResponseDTO;
@@ -24,7 +24,7 @@ import java.util.UUID;
 public class UserService {
 
     @Autowired
-    private UserMapper userMapper;
+    private UserRepository userRepository;
 
     @Autowired
     private MailService mailService;
@@ -33,7 +33,7 @@ public class UserService {
      * Load a user's profile by UUID and map to response DTO
      */
     public UserProfileResponseDTO getUserProfile(UUID userId) {
-        User user = userMapper.selectByPrimaryKey(userId);
+        User user = userRepository.findById(userId);
         if (user == null) {
             throw new ResourceNotFoundException("User not found");
         }
@@ -44,7 +44,7 @@ public class UserService {
      * Update user profile selectively with allowed fields only
      */
     public UserProfileUpdateResponseDTO updateUserProfileSelective(UUID userId, UserProfileUpdateRequestDTO req) {
-        User existing = userMapper.selectByPrimaryKey(userId);
+        User existing = userRepository.findById(userId);
         if (existing == null) {
             return null;
         }
@@ -64,7 +64,7 @@ public class UserService {
             }
             
             // Check if new email already exists
-            User userWithNewEmail = userMapper.selectByEmail(req.getEmail());
+            User userWithNewEmail = userRepository.findByEmail(req.getEmail());
             if (userWithNewEmail != null) {
                 throw new IllegalArgumentException("Email already exists");
             }
@@ -99,10 +99,10 @@ public class UserService {
         // update timestamp
         toUpdate.setUpdateTime(new Date());
 
-        userMapper.updateByPrimaryKeySelective(toUpdate);
+        userRepository.save(toUpdate);
 
         // reload to get latest values
-        User updated = userMapper.selectByPrimaryKey(userId);
+        User updated = userRepository.findById(userId);
         UserProfileResponseDTO profileResponse = mapToProfileResponse(updated);
         
         // Return response with email change flag
@@ -133,7 +133,7 @@ public class UserService {
      */
     public void sendEmailChangeVerification(String newEmail) {
         // Check if new email already exists
-        User existingUser = userMapper.selectByEmail(newEmail);
+        User existingUser = userRepository.findByEmail(newEmail);
         if (existingUser != null) {
             throw new IllegalArgumentException("Email already exists");
         }
@@ -143,12 +143,12 @@ public class UserService {
     }
 
     public List<UserProfileResponseDTO> getAllUsers() {
-        List<User> users = userMapper.selectAllUsersForRanking();
+        List<User> users = userRepository.findAllUsersForRanking();
         return users.stream().map(this::mapToProfileResponse).toList();
     }
 
     public List<UserProfileResponseDTO> getUsersByIds(List<UUID> userIds) {
-        List<User> users = userMapper.selectByUuids(userIds);
+        List<User> users = userRepository.findByUuids(userIds);
         return users.stream().map(this::mapToProfileResponse).toList();
     }
 
@@ -166,7 +166,7 @@ public class UserService {
 
         // Idempotency check is already done at Listener level
         // This method just updates the database
-        User user = userMapper.selectByPrimaryKey(userId);
+        User user = userRepository.findById(userId);
         if (user == null) {
             log.warn("User not found for updateLastActiveTime: userId={}", userId);
             return;
@@ -184,12 +184,8 @@ public class UserService {
         }
 
         user.updateLastActive(newLastActive);
-        int result = userMapper.updateByPrimaryKey(user);
-        if (result > 0) {
-            log.info("Successfully updated last active time for user: {}, new timestamp: {}", userId, newLastActive);
-        } else {
-            log.warn("Failed to update last active time for user: {} (no rows affected)", userId);
-        }
+        userRepository.save(user);
+        log.info("Successfully updated last active time for user: {}, new timestamp: {}", userId, newLastActive);
     }
 
     /**

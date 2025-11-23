@@ -1,25 +1,20 @@
 package com.yushan.user_service.controller;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
-import com.yushan.user_service.dao.UserMapper;
 import com.yushan.user_service.dto.*;
 import com.yushan.user_service.entity.User;
 import com.yushan.user_service.event.UserActivityEventProducer;
+import com.yushan.user_service.repository.UserRepository;
 import com.yushan.user_service.service.AuthService;
 import com.yushan.user_service.service.MailService;
 import com.yushan.user_service.util.JwtUtil;
-import com.yushan.user_service.util.RedisUtil;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
-import org.springframework.boot.autoconfigure.security.servlet.SecurityAutoConfiguration;
 import org.springframework.boot.test.autoconfigure.web.servlet.AutoConfigureMockMvc;
 import org.springframework.boot.test.autoconfigure.web.servlet.WebMvcTest;
 import org.springframework.boot.test.mock.mockito.MockBean;
-import org.springframework.context.annotation.Import;
 import org.springframework.http.MediaType;
-import org.springframework.security.authentication.BadCredentialsException;
-import org.springframework.security.test.context.support.WithAnonymousUser;
 import org.springframework.test.context.ActiveProfiles;
 import org.springframework.test.web.servlet.MockMvc;
 
@@ -51,7 +46,7 @@ public class AuthControllerTest {
     private MailService mailService;
 
     @MockBean
-    private UserMapper userMapper;
+    private UserRepository userRepository;
 
     @MockBean
     private JwtUtil jwtUtil;
@@ -162,7 +157,7 @@ public class AuthControllerTest {
         // Given
         EmailVerificationRequestDTO emailRequest = new EmailVerificationRequestDTO();
         emailRequest.setEmail("new-user@example.com");
-        when(userMapper.selectByEmail(emailRequest.getEmail())).thenReturn(null);
+        when(userRepository.findByEmail(emailRequest.getEmail())).thenReturn(null);
         doNothing().when(mailService).sendVerificationCode(emailRequest.getEmail());
 
         // When & Then
@@ -182,7 +177,7 @@ public class AuthControllerTest {
         // Given
         EmailVerificationRequestDTO emailRequest = new EmailVerificationRequestDTO();
         emailRequest.setEmail("existing-user@example.com");
-        when(userMapper.selectByEmail(emailRequest.getEmail())).thenReturn(new User());
+        when(userRepository.findByEmail(emailRequest.getEmail())).thenReturn(new User());
 
         // When & Then
         mockMvc.perform(post("/api/v1/auth/send-email")

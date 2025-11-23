@@ -1,13 +1,14 @@
 package com.yushan.user_service.controller;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
-import com.yushan.user_service.dao.UserMapper;
 import com.yushan.user_service.dto.EmailVerificationRequestDTO;
 import com.yushan.user_service.dto.UserProfileResponseDTO;
 import com.yushan.user_service.dto.UserProfileUpdateRequestDTO;
 import com.yushan.user_service.dto.UserProfileUpdateResponseDTO;
 import com.yushan.user_service.entity.User;
 import com.yushan.user_service.event.UserActivityEventProducer;
+import com.yushan.user_service.event.UserEventProducer;
+import com.yushan.user_service.repository.UserRepository;
 import com.yushan.user_service.security.CustomUserDetailsService.CustomUserDetails;
 import com.yushan.user_service.security.SecurityExpressionRoot;
 import com.yushan.user_service.service.MailService;
@@ -94,19 +95,22 @@ public class UserControllerTest {
     private UserService userService;
 
     @MockBean
-    private UserMapper userMapper;
+    private UserRepository userRepository;
 
     @MockBean
     private MailService mailService;
+
+    @MockBean
+    private UserEventProducer userEventProducer;
+
+    @MockBean
+    private UserActivityEventProducer userActivityEventProducer;
 
     @MockBean
     private JwtUtil jwtUtil;
 
     @MockBean
     private RedisUtil redisUtil;
-
-    @MockBean
-    private UserActivityEventProducer userActivityEventProducer;
 
     private SecurityExpressionRoot securityExpressionRoot;
     private User testUser;
@@ -203,7 +207,7 @@ public class UserControllerTest {
         // Given
         EmailVerificationRequestDTO emailRequest = new EmailVerificationRequestDTO();
         emailRequest.setEmail("new.email@example.com");
-        when(userMapper.selectByEmail(testEmail)).thenReturn(testUser);
+        when(userRepository.findByEmail(testEmail)).thenReturn(testUser);
 
         // When & Then
         mockMvc.perform(post("/api/v1/users/send-email-change-verification")

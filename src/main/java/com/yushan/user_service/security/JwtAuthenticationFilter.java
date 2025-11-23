@@ -1,7 +1,7 @@
 package com.yushan.user_service.security;
 
-import com.yushan.user_service.dao.UserMapper;
 import com.yushan.user_service.entity.User;
+import com.yushan.user_service.repository.UserRepository;
 import com.yushan.user_service.util.JwtUtil;
 import jakarta.servlet.FilterChain;
 import jakarta.servlet.ServletException;
@@ -34,7 +34,7 @@ public class JwtAuthenticationFilter extends OncePerRequestFilter {
     private JwtUtil jwtUtil;
 
     @Autowired
-    private UserMapper userMapper;
+    private UserRepository userRepository;
 
     /**
      * Filter method that processes each request
@@ -60,7 +60,7 @@ public class JwtAuthenticationFilter extends OncePerRequestFilter {
                 // 3. Check if user is not already authenticated
                 if (email != null && SecurityContextHolder.getContext().getAuthentication() == null) {
                     // 4. Load user from database
-                    User user = userMapper.selectByEmail(email);
+                    User user = userRepository.findByEmail(email);
                     
                     if (user != null && jwtUtil.validateToken(token, user)) {
                         // 5. Create CustomUserDetails from User

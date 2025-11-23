@@ -1,7 +1,7 @@
 package com.yushan.user_service.controller;
 
-import com.yushan.user_service.dao.UserMapper;
 import com.yushan.user_service.event.UserActivityEventProducer;
+import com.yushan.user_service.repository.UserRepository;
 import com.yushan.user_service.service.UserService;
 import com.yushan.user_service.util.JwtUtil;
 import org.junit.jupiter.api.Test;
@@ -25,7 +25,7 @@ public class HealthControllerTest {
     private UserService userService;
 
     @MockBean
-    private UserMapper userMapper;
+    private UserRepository userRepository;
 
     @MockBean
     private JwtUtil jwtUtil;

@@ -2,14 +2,17 @@ package com.yushan.user_service.integration;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.yushan.user_service.TestcontainersConfiguration;
-import com.yushan.user_service.dao.UserMapper;
 import com.yushan.user_service.entity.User;
+import com.yushan.user_service.repository.UserRepository;
 import com.yushan.user_service.enums.ErrorCode;
 import com.yushan.user_service.enums.Gender;
 import com.yushan.user_service.enums.UserStatus;
+import com.yushan.user_service.event.UserActivityEventProducer;
+import com.yushan.user_service.event.UserEventProducer;
 import com.yushan.user_service.service.MailService;
 import com.yushan.user_service.util.JwtUtil;
 import com.yushan.user_service.util.MailUtil;
+import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -22,7 +25,6 @@ import org.springframework.test.context.ActiveProfiles;
 import org.springframework.test.context.TestPropertySource;
 import org.springframework.test.web.servlet.MockMvc;
 import org.springframework.test.web.servlet.setup.MockMvcBuilders;
-import org.springframework.transaction.annotation.Transactional;
 import org.springframework.web.context.WebApplicationContext;
 
 import java.util.Date;
@@ -55,7 +57,6 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 @SpringBootTest
 @ActiveProfiles("integration-test")
 @Import(TestcontainersConfiguration.class)
-@Transactional
 @TestPropertySource(properties = {
         "spring.kafka.bootstrap-servers=",
         "spring.kafka.enabled=false",
@@ -71,10 +72,11 @@ public class AuthIntegrationTest {
     private WebApplicationContext context;
 
     @Autowired
-    private UserMapper userMapper;
+    private UserRepository userRepository;
 
     @Autowired
     private JwtUtil jwtUtil;
+
 
     @Autowired
     private PasswordEncoder passwordEncoder;
@@ -89,6 +91,12 @@ public class AuthIntegrationTest {
     @MockBean
     private MailUtil mailUtil;
 
+    @MockBean
+    private UserEventProducer userEventProducer;
+
+    @MockBean
+    private UserActivityEventProducer userActivityEventProducer;
+
     private MockMvc mockMvc;
 
     @BeforeEach
@@ -102,6 +110,28 @@ public class AuthIntegrationTest {
         doNothing().when(mailService).sendVerificationCode(anyString());
         when(mailService.verifyEmail(anyString(), eq("123456"))).thenReturn(true);
         when(mailService.verifyEmail(anyString(), anyString())).thenReturn(false);
+    }
+
+    @AfterEach
+    void tearDown() {
+        // Cleanup test users to avoid duplicate key errors
+        cleanupTestUser("newuser@example.com");
+        cleanupTestUser("testuser@example.com");
+        cleanupTestUser("jwtuser@example.com");
+        cleanupTestUser("refreshuser@example.com");
+        cleanupTestUser("passworduser@example.com");
+        cleanupTestUser("profileuser@example.com");
+    }
+
+    private void cleanupTestUser(String email) {
+        try {
+            User user = userRepository.findByEmail(email);
+            if (user != null) {
+                userRepository.delete(user.getUuid());
+            }
+        } catch (Exception e) {
+            // Ignore cleanup errors
+        }
     }
 
     /**
@@ -130,7 +160,8 @@ public class AuthIntegrationTest {
                 .andExpect(jsonPath("$.data.email").value("newuser@example.com"));
 
         // Then - Verify user was persisted in database
-        User registeredUser = userMapper.selectByEmail("newuser@example.com");
+        // Note: With @Transactional, MockMvc runs in same transaction, so data should be visible
+        User registeredUser = userRepository.findByEmail("newuser@example.com");
         assertThat(registeredUser).isNotNull();
         assertThat(registeredUser.getUsername()).isEqualTo("newuser");
         assertThat(registeredUser.getEmail()).isEqualTo("newuser@example.com");
@@ -145,7 +176,7 @@ public class AuthIntegrationTest {
     void testUserLogin_WithDatabaseVerification() throws Exception {
         // Given - Create user in database
         User testUser = createTestUser("testuser@example.com", "testuser", "password123");
-        userMapper.insert(testUser);
+        userRepository.save(testUser);
 
         Map<String, String> loginRequest = new HashMap<>();
         loginRequest.put("email", "testuser@example.com");
@@ -163,7 +194,7 @@ public class AuthIntegrationTest {
                 .andExpect(jsonPath("$.data.username").value("testuser"));
 
         // Then - Verify user data from database
-        User loggedInUser = userMapper.selectByEmail("testuser@example.com");
+        User loggedInUser = userRepository.findByEmail("testuser@example.com");
         assertThat(loggedInUser).isNotNull();
         assertThat(loggedInUser.getLastLogin()).isNotNull();
         assertThat(loggedInUser.getLastActive()).isNotNull();
@@ -178,7 +209,7 @@ public class AuthIntegrationTest {
     void testJwtTokenValidation_WithRedisCache() throws Exception {
         // Given - Create user and generate token
         User testUser = createTestUser("jwtuser@example.com", "jwtuser", "password123");
-        userMapper.insert(testUser);
+        userRepository.save(testUser);
 
         String accessToken = jwtUtil.generateAccessToken(testUser);
         String refreshToken = jwtUtil.generateRefreshToken(testUser);
@@ -205,7 +236,7 @@ public class AuthIntegrationTest {
     void testRefreshToken_WithDatabasePersistence() throws Exception {
         // Given - Create user and generate refresh token
         User testUser = createTestUser("refreshuser@example.com", "refreshuser", "password123");
-        userMapper.insert(testUser);
+        userRepository.save(testUser);
 
         String refreshToken = jwtUtil.generateRefreshToken(testUser);
 
@@ -222,7 +253,7 @@ public class AuthIntegrationTest {
                 .andExpect(jsonPath("$.data.refreshToken").exists());
 
         // Then - Verify new tokens are generated
-        User refreshedUser = userMapper.selectByEmail("refreshuser@example.com");
+        User refreshedUser = userRepository.findByEmail("refreshuser@example.com");
         assertThat(refreshedUser).isNotNull();
         assertThat(refreshedUser.getLastLogin()).isNotNull();
         assertThat(refreshedUser.getLastActive()).isNotNull();
@@ -235,12 +266,13 @@ public class AuthIntegrationTest {
      */
     @Test
     void testEmailVerification_WithDatabaseUpdate() throws Exception {
-        // Given - Use a new email that doesn't exist in database
-        String newEmail = "newuser@example.com";
+        // Given - Use a unique email that doesn't exist in database
+        // Use timestamp to ensure uniqueness
+        String uniqueEmail = "emailverification" + System.currentTimeMillis() + "@example.com";
 
         // When - Send verification email
         Map<String, String> sendEmailRequest = new HashMap<>();
-        sendEmailRequest.put("email", newEmail);
+        sendEmailRequest.put("email", uniqueEmail);
 
         mockMvc.perform(post("/api/v1/auth/send-email")
                 .contentType(MediaType.APPLICATION_JSON)
@@ -260,10 +292,10 @@ public class AuthIntegrationTest {
         // Given
         String plainPassword = "testpassword123";
         User testUser = createTestUser("passworduser@example.com", "passworduser", plainPassword);
-        userMapper.insert(testUser);
+        userRepository.save(testUser);
 
         // When - Retrieve user from database
-        User passwordUser = userMapper.selectByEmail("passworduser@example.com");
+        User passwordUser = userRepository.findByEmail("passworduser@example.com");
         assertThat(passwordUser).isNotNull();
 
         // Then - Verify password is encrypted
@@ -284,7 +316,7 @@ public class AuthIntegrationTest {
         testUser.setGender(1);
         testUser.setIsAuthor(true);
         testUser.setIsAdmin(false);
-        userMapper.insert(testUser);
+        userRepository.save(testUser);
 
         String accessToken = jwtUtil.generateAccessToken(testUser);
 
@@ -321,11 +353,11 @@ public class AuthIntegrationTest {
                 .andExpect(status().isBadRequest());
 
         // Then - Verify no user was created in database
-        User invalidUser = userMapper.selectByEmail("invalid@example.com");
+        User invalidUser = userRepository.findByEmail("invalid@example.com");
         assertThat(invalidUser).isNull();
 
         // Also verify no user with empty email exists
-        User emptyEmailUser = userMapper.selectByEmail("");
+        User emptyEmailUser = userRepository.findByEmail("");
         assertThat(emptyEmailUser).isNull();
     }
 

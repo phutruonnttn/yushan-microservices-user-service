@@ -1,6 +1,6 @@
 package com.yushan.user_service.service;
 
-import com.yushan.user_service.dao.UserMapper;
+import com.yushan.user_service.repository.UserRepository;
 import com.yushan.user_service.dto.UserProfileResponseDTO;
 import com.yushan.user_service.entity.User;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -10,7 +10,7 @@ import org.springframework.stereotype.Service;
 public class AuthorService {
 
     @Autowired
-    private UserMapper userMapper;
+    private UserRepository userRepository;
 
     @Autowired
     private MailService mailService;
@@ -27,7 +27,7 @@ public class AuthorService {
         }
         
         // Get user from database
-        User user = userMapper.selectByEmail(email.trim().toLowerCase(java.util.Locale.ROOT));
+        User user = userRepository.findByEmail(email.trim().toLowerCase(java.util.Locale.ROOT));
         if (user == null) {
             throw new IllegalArgumentException("User not found");
         }
@@ -44,7 +44,7 @@ public class AuthorService {
 
         // Update user to author
         user.upgradeToAuthor();
-        userMapper.updateByPrimaryKeySelective(user);
+        userRepository.save(user);
         
         // Return updated user profile
         return userService.getUserProfile(user.getUuid());

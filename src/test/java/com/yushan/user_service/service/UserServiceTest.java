@@ -1,6 +1,6 @@
 package com.yushan.user_service.service;
 
-import com.yushan.user_service.dao.UserMapper;
+import com.yushan.user_service.repository.UserRepository;
 import com.yushan.user_service.dto.UserProfileResponseDTO;
 import com.yushan.user_service.dto.UserProfileUpdateRequestDTO;
 import com.yushan.user_service.dto.UserProfileUpdateResponseDTO;
@@ -21,21 +21,21 @@ import static org.mockito.Mockito.*;
 
 public class UserServiceTest {
 
-    private UserMapper userMapper;
+    private UserRepository userRepository;
     private MailService mailService;
     private UserService userService;
 
     @BeforeEach
     void setUp() {
-        userMapper = Mockito.mock(UserMapper.class);
+        userRepository = Mockito.mock(UserRepository.class);
         mailService = Mockito.mock(MailService.class);
         userService = new UserService();
 
         // Inject mock mapper via reflection (simple without Spring context)
         try {
-            java.lang.reflect.Field f = UserService.class.getDeclaredField("userMapper");
+            java.lang.reflect.Field f = UserService.class.getDeclaredField("userRepository");
             f.setAccessible(true);
-            f.set(userService, userMapper);
+            f.set(userService, userRepository);
 
             java.lang.reflect.Field f2 = UserService.class.getDeclaredField("mailService");
             f2.setAccessible(true);
@@ -48,10 +48,10 @@ public class UserServiceTest {
     @Test
     void getUserProfile_returnsNull_whenUserNotFound() {
         UUID id = UUID.randomUUID();
-        when(userMapper.selectByPrimaryKey(id)).thenReturn(null);
+        when(userRepository.findById(id)).thenReturn(null);
 
         assertThrows(ResourceNotFoundException.class, () -> userService.getUserProfile(id));
-        verify(userMapper).selectByPrimaryKey(id);
+        verify(userRepository).findById(id);
     }
 
     @Test
@@ -68,7 +68,7 @@ public class UserServiceTest {
         existing.setLastLogin(new Date());
         existing.setLastActive(new Date());
 
-        when(userMapper.selectByPrimaryKey(id)).thenReturn(existing);
+        when(userRepository.findById(id)).thenReturn(existing);
 
         User after = new User();
         after.setUuid(id);
@@ -81,7 +81,7 @@ public class UserServiceTest {
         after.setLastActive(new Date());
         after.setUpdateTime(new Date());
 
-        when(userMapper.selectByPrimaryKey(id)).thenReturn(existing, after);
+        when(userRepository.findById(id)).thenReturn(existing, after);
 
         UserProfileUpdateRequestDTO req = new UserProfileUpdateRequestDTO();
         req.setUsername("newname");
@@ -91,9 +91,9 @@ public class UserServiceTest {
 
         UserProfileUpdateResponseDTO dto = userService.updateUserProfileSelective(id, req);
 
-        // verify mapper called with selective update
+        // verify repository called with save
         ArgumentCaptor<User> captor = ArgumentCaptor.forClass(User.class);
-        verify(userMapper).updateByPrimaryKeySelective(captor.capture());
+        verify(userRepository).save(captor.capture());
         User updatedArg = captor.getValue();
         assertEquals(id, updatedArg.getUuid());
         assertEquals("newname", updatedArg.getUsername());
@@ -123,7 +123,7 @@ public class UserServiceTest {
         existing.setGender(1);
         existing.setLastLogin(new Date());
         existing.setLastActive(new Date());
-        when(userMapper.selectByPrimaryKey(id)).thenReturn(existing);
+        when(userRepository.findById(id)).thenReturn(existing);
 
         UserProfileUpdateRequestDTO req = new UserProfileUpdateRequestDTO();
         req.setEmail("new@example.com"); // no code provided
@@ -142,7 +142,7 @@ public class UserServiceTest {
         existing.setGender(1);
         existing.setLastLogin(new Date());
         existing.setLastActive(new Date());
-        when(userMapper.selectByPrimaryKey(id)).thenReturn(existing);
+        when(userRepository.findById(id)).thenReturn(existing);
 
         when(mailService.verifyEmail("new@example.com", "000000")).thenReturn(false);
 
@@ -174,8 +174,8 @@ public class UserServiceTest {
         after.setLastLogin(new Date());
         after.setLastActive(new Date());
 
-        when(userMapper.selectByPrimaryKey(id)).thenReturn(existing, after);
-        when(userMapper.selectByEmail("new@example.com")).thenReturn(null);
+        when(userRepository.findById(id)).thenReturn(existing, after);
+        when(userRepository.findByEmail("new@example.com")).thenReturn(null);
         when(mailService.verifyEmail("new@example.com", "123456")).thenReturn(true);
 
         UserProfileUpdateRequestDTO req = new UserProfileUpdateRequestDTO();
@@ -185,7 +185,7 @@ public class UserServiceTest {
         UserProfileUpdateResponseDTO dto = userService.updateUserProfileSelective(id, req);
 
         ArgumentCaptor<User> captor = ArgumentCaptor.forClass(User.class);
-        verify(userMapper).updateByPrimaryKeySelective(captor.capture());
+        verify(userRepository).save(captor.capture());
         assertEquals("new@example.com", captor.getValue().getEmail());
         assertEquals("new@example.com", dto.getProfile().getEmail());
         assertTrue(dto.isEmailChanged());
@@ -193,7 +193,7 @@ public class UserServiceTest {
 
     @Test
     void sendEmailChangeVerification_emailExists_throws() {
-        when(userMapper.selectByEmail("dup@example.com")).thenReturn(new User());
+        when(userRepository.findByEmail("dup@example.com")).thenReturn(new User());
         assertThrows(IllegalArgumentException.class,
                 () -> userService.sendEmailChangeVerification("dup@example.com"));
         verify(mailService, never()).sendVerificationCode(anyString());
@@ -201,7 +201,7 @@ public class UserServiceTest {
 
     @Test
     void sendEmailChangeVerification_success_callsMailService() {
-        when(userMapper.selectByEmail("free@example.com")).thenReturn(null);
+        when(userRepository.findByEmail("free@example.com")).thenReturn(null);
         userService.sendEmailChangeVerification("free@example.com");
         verify(mailService).sendVerificationCode("free@example.com");
     }
@@ -220,7 +220,7 @@ public class UserServiceTest {
         adminUser.setIsAuthor(true);
         adminUser.setIsAdmin(true);  // Admin user
 
-        when(userMapper.selectByPrimaryKey(id)).thenReturn(adminUser);
+        when(userRepository.findById(id)).thenReturn(adminUser);
 
         var profile = userService.getUserProfile(id);
 
@@ -250,7 +250,7 @@ public class UserServiceTest {
         user2.setStatus(0);
 
         List<User> userList = List.of(user1, user2);
-        when(userMapper.selectAllUsersForRanking()).thenReturn(userList);
+        when(userRepository.findAllUsersForRanking()).thenReturn(userList);
 
         // Act
         List<UserProfileResponseDTO> result = userService.getAllUsers();
@@ -263,7 +263,7 @@ public class UserServiceTest {
         assertEquals(user2.getUuid().toString(), result.get(1).getUuid());
         assertEquals(user2.getUsername(), result.get(1).getUsername());
 
-        verify(userMapper).selectAllUsersForRanking();
+        verify(userRepository).findAllUsersForRanking();
     }
 
     @Test
@@ -288,7 +288,7 @@ public class UserServiceTest {
         user2.setStatus(0);
 
         List<User> userList = List.of(user1, user2);
-        when(userMapper.selectByUuids(userIds)).thenReturn(userList);
+        when(userRepository.findByUuids(userIds)).thenReturn(userList);
 
         // Act
         List<UserProfileResponseDTO> result = userService.getUsersByIds(userIds);
@@ -299,14 +299,14 @@ public class UserServiceTest {
         assertEquals(id1.toString(), result.get(0).getUuid());
         assertEquals(id2.toString(), result.get(1).getUuid());
 
-        verify(userMapper).selectByUuids(userIds);
+        verify(userRepository).findByUuids(userIds);
     }
 
     @Test
     void getUsersByIds_withEmptyList_returnsEmptyList() {
         // Arrange
         List<UUID> emptyIdList = List.of();
-        when(userMapper.selectByUuids(emptyIdList)).thenReturn(List.of());
+        when(userRepository.findByUuids(emptyIdList)).thenReturn(List.of());
 
         // Act
         List<UserProfileResponseDTO> result = userService.getUsersByIds(emptyIdList);
@@ -314,7 +314,7 @@ public class UserServiceTest {
         // Assert
         assertNotNull(result);
         assertTrue(result.isEmpty());
-        verify(userMapper).selectByUuids(emptyIdList);
+        verify(userRepository).findByUuids(emptyIdList);
     }
 
     @Test
@@ -331,7 +331,7 @@ public class UserServiceTest {
         normalUser.setIsAuthor(false);
         normalUser.setIsAdmin(false);  // Normal user
 
-        when(userMapper.selectByPrimaryKey(id)).thenReturn(normalUser);
+        when(userRepository.findById(id)).thenReturn(normalUser);
 
         var profile = userService.getUserProfile(id);
 

@@ -1,7 +1,6 @@
 package com.yushan.user_service.service;
 
-import com.yushan.user_service.dao.LibraryMapper;
-import com.yushan.user_service.dao.UserMapper;
+import com.yushan.user_service.repository.UserRepository;
 import com.yushan.user_service.dto.UserRegistrationRequestDTO;
 import com.yushan.user_service.dto.UserAuthResponseDTO;
 import com.yushan.user_service.entity.Library;
@@ -26,10 +25,7 @@ import java.util.UUID;
 public class AuthService {
 
     @Autowired
-    private UserMapper userMapper;
-
-    @Autowired
-    private LibraryMapper libraryMapper;
+    private UserRepository userRepository;
 
     @Autowired
     private JwtUtil jwtUtil;
@@ -48,7 +44,7 @@ public class AuthService {
     @Transactional(rollbackFor = Exception.class)
     public User register(UserRegistrationRequestDTO registrationDTO) {
         // check if email existed
-        if (userMapper.selectByEmail(registrationDTO.getEmail()) != null) {
+        if (userRepository.findByEmail(registrationDTO.getEmail()) != null) {
             throw new ValidationException("Email was registered");
         }
 
@@ -74,14 +70,14 @@ public class AuthService {
         // set default user profile using business logic
         user.initializeAsNew();
 
-        userMapper.insert(user);
+        userRepository.save(user);
 
         // create user library
         Library library = new Library();
         library.setUuid(UUID.randomUUID());
         library.setUserId(user.getUuid());
 
-        libraryMapper.insertSelective(library);
+        userRepository.saveLibrary(library);
         return user;
     }
 
@@ -125,7 +121,7 @@ public class AuthService {
      * @return
      */
     public User login(String email, String password) {
-        User user = userMapper.selectByEmail(email);
+        User user = userRepository.findByEmail(email);
         if (user != null && BCrypt.checkpw(password, user.getHashPassword())) {
             // Check if user is suspended or banned
             UserStatus status = UserStatus.fromCode(user.getStatus());
@@ -178,7 +174,7 @@ public class AuthService {
         responseDTO.setTokenType("Bearer");
         responseDTO.setExpiresIn(accessTokenExpiration);
 
-        userMapper.updateByPrimaryKeySelective(user);
+        userRepository.save(user);
         return responseDTO;
     }
 
@@ -203,7 +199,7 @@ public class AuthService {
         String userId = jwtUtil.extractUserId(refreshToken);
 
         // Load user from database
-        User user = userMapper.selectByEmail(email);
+        User user = userRepository.findByEmail(email);
 
         if (user == null || !user.getUuid().toString().equals(userId)) {
             throw new ValidationException("User not found or token mismatch");

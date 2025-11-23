@@ -1,9 +1,9 @@
 package com.yushan.user_service.controller;
 
-import com.yushan.user_service.dao.UserMapper;
 import com.yushan.user_service.dto.*;
 import com.yushan.user_service.entity.User;
 import com.yushan.user_service.exception.ValidationException;
+import com.yushan.user_service.repository.UserRepository;
 import com.yushan.user_service.service.AuthService;
 import com.yushan.user_service.service.MailService;
 import jakarta.validation.Valid;
@@ -27,7 +27,7 @@ public class AuthController {
     private MailService mailService;
 
     @Autowired
-    private UserMapper userMapper;
+    private UserRepository userRepository;
 
     /**
      * verifyEmail & Register a new user
@@ -98,7 +98,7 @@ public class AuthController {
         String email = emailRequest.getEmail();
 
         //query email if exists
-        User user = userMapper.selectByEmail(email);
+        User user = userRepository.findByEmail(email);
         if (user != null) {
             throw new ValidationException("Email already exists");
         }

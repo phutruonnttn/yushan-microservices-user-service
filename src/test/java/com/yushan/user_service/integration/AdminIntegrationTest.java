@@ -3,14 +3,13 @@ package com.yushan.user_service.integration;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.yushan.user_service.TestcontainersConfiguration;
 import com.yushan.user_service.config.DatabaseConfig;
-import com.yushan.user_service.dao.UserMapper;
+import com.yushan.user_service.repository.UserRepository;
 import com.yushan.user_service.dto.AdminUpdateUserDTO;
 import com.yushan.user_service.entity.User;
 import com.yushan.user_service.enums.Gender;
 import com.yushan.user_service.enums.UserStatus;
 import com.yushan.user_service.event.UserActivityEventProducer;
 import com.yushan.user_service.service.MailService;
-import com.yushan.user_service.service.UserService;
 import com.yushan.user_service.util.JwtUtil;
 import com.yushan.user_service.util.MailUtil;
 import org.junit.jupiter.api.BeforeEach;
@@ -41,7 +40,6 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 @SpringBootTest
 @ActiveProfiles("integration-test")
 @Import({TestcontainersConfiguration.class, DatabaseConfig.class})
-@Transactional
 @TestPropertySource(properties = {
         "spring.kafka.bootstrap-servers=",
         "spring.kafka.enabled=false",
@@ -56,7 +54,7 @@ public class AdminIntegrationTest {
     @Autowired
     private WebApplicationContext context;
     @Autowired
-    private UserMapper userMapper;
+    private UserRepository userRepository;
     @Autowired
     private JwtUtil jwtUtil;
     @Autowired
@@ -107,7 +105,7 @@ public class AdminIntegrationTest {
                 .andExpect(status().isOk());
 
         // Then: Verify changes in the database
-        User updatedUser = userMapper.selectByPrimaryKey(normalUser.getUuid());
+        User updatedUser = userRepository.findById(normalUser.getUuid());
         assertThat(updatedUser.getStatus()).isEqualTo(UserStatus.BANNED.ordinal());
         assertThat(updatedUser.getIsAuthor()).isFalse();
         assertThat(updatedUser.getIsAdmin()).isFalse();
@@ -115,13 +113,27 @@ public class AdminIntegrationTest {
 
     // Helper Methods
     private void createTestData() {
+        // Delete existing users if exist (from previous test runs)
+        User existingAdmin = userRepository.findByEmail("admin@test.com");
+        if (existingAdmin != null) {
+            userRepository.delete(existingAdmin.getUuid());
+        }
+        User existingAuthor = userRepository.findByEmail("author@test.com");
+        if (existingAuthor != null) {
+            userRepository.delete(existingAuthor.getUuid());
+        }
+        User existingNormal = userRepository.findByEmail("user@test.com");
+        if (existingNormal != null) {
+            userRepository.delete(existingNormal.getUuid());
+        }
+
         adminUser = createTestUser("admin@test.com", "admin_user", true, true);
         authorUser = createTestUser("author@test.com", "author_user", true, false);
         normalUser = createTestUser("user@test.com", "normal_user", false, false);
 
-        userMapper.insert(adminUser);
-        userMapper.insert(authorUser);
-        userMapper.insert(normalUser);
+        userRepository.save(adminUser);
+        userRepository.save(authorUser);
+        userRepository.save(normalUser);
 
         adminToken = jwtUtil.generateAccessToken(adminUser);
     }

@@ -3,8 +3,7 @@ package com.yushan.user_service.service;
 import com.yushan.user_service.client.ContentServiceClient;
 import com.yushan.user_service.client.dto.ChapterInfoDTO;
 import com.yushan.user_service.client.dto.NovelInfoDTO;
-import com.yushan.user_service.dao.LibraryMapper;
-import com.yushan.user_service.dao.NovelLibraryMapper;
+import com.yushan.user_service.repository.UserRepository;
 import com.yushan.user_service.dto.LibraryResponseDTO;
 import com.yushan.user_service.dto.PageResponseDTO;
 import com.yushan.user_service.entity.Library;
@@ -27,10 +26,7 @@ public class LibraryService {
     private ContentServiceClient contentServiceClient;
 
     @Autowired
-    private NovelLibraryMapper novelLibraryMapper;
-
-    @Autowired
-    private LibraryMapper libraryMapper;
+    private UserRepository userRepository;
 
     /**
      * add novel to library
@@ -48,7 +44,7 @@ public class LibraryService {
         NovelLibrary novelLibrary = new NovelLibrary();
         novelLibrary.setNovelId(novelId);
 
-        Library library = libraryMapper.selectByUserId(userId);
+        Library library = userRepository.findLibraryByUserId(userId);
         if (library == null) {
             throw new ResourceNotFoundException("User with ID " + userId + " does not have a library");
         }
@@ -56,7 +52,7 @@ public class LibraryService {
 
         novelLibrary.setProgress(progress);
 
-        novelLibraryMapper.insertSelective(novelLibrary);
+        userRepository.saveNovelLibrary(novelLibrary);
     }
 
     /**
@@ -71,7 +67,7 @@ public class LibraryService {
             throw new ValidationException("novel don't exist in library");
         }
 
-        novelLibraryMapper.deleteByPrimaryKey(novelLibrary.getId());
+        userRepository.deleteNovelLibrary(novelLibrary.getId());
     }
 
     /**
@@ -84,12 +80,12 @@ public class LibraryService {
             return;
         }
 
-        List<NovelLibrary> libraryEntries = novelLibraryMapper.selectByUserIdAndNovelIds(userId, novelIds);
+        List<NovelLibrary> libraryEntries = userRepository.findNovelLibrariesByUserIdAndNovelIds(userId, novelIds);
         if (libraryEntries.size() != novelIds.size()) {
             throw new ValidationException("One or more novels are not in your library.");
         }
 
-        novelLibraryMapper.deleteByUserIdAndNovelIds(userId, novelIds);
+        userRepository.deleteNovelLibrariesByUserIdAndNovelIds(userId, novelIds);
     }
 
     /**
@@ -104,7 +100,7 @@ public class LibraryService {
     @Transactional(readOnly = true)
     public PageResponseDTO<LibraryResponseDTO> getUserLibrary(UUID userId, int page, int size, String sort, String order) {
         // get all novel ids in user's library
-        List<Integer> allNovelIds = novelLibraryMapper.selectNovelIdsByUserId(userId);
+        List<Integer> allNovelIds = userRepository.findNovelIdsByUserId(userId);
         if (CollectionUtils.isEmpty(allNovelIds)) {
             return new PageResponseDTO<>(Collections.emptyList(), 0, size, 0);
         }
@@ -119,14 +115,14 @@ public class LibraryService {
             return new PageResponseDTO<>(Collections.emptyList(), 0, size, 0);
         }
 
-        long totalElements = novelLibraryMapper.countByUserId(userId, publishedNovelIds);
+        long totalElements = userRepository.countNovelLibrariesByUserId(userId, publishedNovelIds);
         if (totalElements == 0) {
             return new PageResponseDTO<>(Collections.emptyList(), 0L, page, size);
         }
         int offset = page * size;
         String safeSort = "updateTime".equalsIgnoreCase(sort) ? "update_time" : "create_time";
         String safeOrder = "asc".equalsIgnoreCase(order) ? "ASC" : "DESC";
-        List<NovelLibrary> novelLibraries = novelLibraryMapper.selectByUserIdWithPagination(userId, publishedNovelIds, offset, size, safeSort, safeOrder);
+        List<NovelLibrary> novelLibraries = userRepository.findNovelLibrariesByUserIdWithPagination(userId, publishedNovelIds, offset, size, safeSort, safeOrder);
 
         if (novelLibraries.isEmpty()) {
             return new PageResponseDTO<>(Collections.emptyList(), totalElements, page, size);
@@ -182,7 +178,7 @@ public class LibraryService {
 
         novelLibrary.setProgress(progress);
 
-        novelLibraryMapper.updateByPrimaryKeySelective(novelLibrary);
+        userRepository.saveNovelLibrary(novelLibrary);
 
         NovelInfoDTO novel = contentServiceClient.getNovelById(novelId).getData();
         List<ChapterInfoDTO> chapters = contentServiceClient.getChaptersByIds(Collections.singletonList(progress)).getData();
@@ -219,7 +215,7 @@ public class LibraryService {
      * @return NovelLibrary
      */
     public NovelLibrary novelFromLibrary(UUID userId, Integer novelId) {
-        return novelLibraryMapper.selectByUserIdAndNovelId(userId, novelId);
+        return userRepository.findNovelLibraryByUserIdAndNovelId(userId, novelId);
     }
 
     /**
@@ -229,7 +225,7 @@ public class LibraryService {
      * @return boolean
      */
     public boolean novelInLibrary(UUID userId, Integer novelId) {
-        return novelLibraryMapper.selectByUserIdAndNovelId(userId, novelId) != null;
+        return userRepository.findNovelLibraryByUserIdAndNovelId(userId, novelId) != null;
     }
 
     /**
@@ -244,7 +240,7 @@ public class LibraryService {
         }
 
         // Find all library entries that match the user and novel IDs
-        Set<Integer> novelsInLibrary = novelLibraryMapper.selectByUserIdAndNovelIds(userId, novelIds)
+        Set<Integer> novelsInLibrary = userRepository.findNovelLibrariesByUserIdAndNovelIds(userId, novelIds)
                 .stream()
                 .map(NovelLibrary::getNovelId)
                 .collect(Collectors.toSet());

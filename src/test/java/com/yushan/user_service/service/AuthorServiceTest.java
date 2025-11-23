@@ -1,6 +1,6 @@
 package com.yushan.user_service.service;
 
-import com.yushan.user_service.dao.UserMapper;
+import com.yushan.user_service.repository.UserRepository;
 import com.yushan.user_service.dto.UserProfileResponseDTO;
 import com.yushan.user_service.entity.User;
 import com.yushan.user_service.util.RedisUtil;
@@ -21,7 +21,7 @@ import static org.mockito.Mockito.*;
 class AuthorServiceTest {
 
     @Mock
-    private UserMapper userMapper;
+    private UserRepository userRepository;
 
     @Mock
     private UserService userService;
@@ -66,7 +66,7 @@ class AuthorServiceTest {
     @Test
     void upgradeToAuthor_Success() {
         // Given
-        when(userMapper.selectByEmail(testEmail)).thenReturn(testUser);
+        when(userRepository.findByEmail(testEmail)).thenReturn(testUser);
         when(mailService.verifyEmail(testEmail, testVerificationCode)).thenReturn(true);
         when(userService.getUserProfile(testUser.getUuid())).thenReturn(expectedResponse);
 
@@ -77,40 +77,40 @@ class AuthorServiceTest {
         assertNotNull(result);
         assertEquals(testEmail, result.getEmail());
         assertTrue(result.getIsAuthor());
-        verify(userMapper).updateByPrimaryKeySelective(testUser);
+        verify(userRepository).save(testUser);
     }
 
     @Test
     void upgradeToAuthor_UserNotFound() {
         // Given
-        when(userMapper.selectByEmail(testEmail)).thenReturn(null);
+        when(userRepository.findByEmail(testEmail)).thenReturn(null);
 
         // When & Then
         IllegalArgumentException exception = assertThrows(IllegalArgumentException.class, 
             () -> authorService.upgradeToAuthor(testEmail, testVerificationCode));
         
         assertEquals("User not found", exception.getMessage());
-        verify(userMapper, never()).updateByPrimaryKeySelective(any());
+        verify(userRepository, never()).save(any());
     }
 
     @Test
     void upgradeToAuthor_UserAlreadyAuthor() {
         // Given
         testUser.setIsAuthor(true);
-        when(userMapper.selectByEmail(testEmail)).thenReturn(testUser);
+        when(userRepository.findByEmail(testEmail)).thenReturn(testUser);
 
         // When & Then
         IllegalArgumentException exception = assertThrows(IllegalArgumentException.class, 
             () -> authorService.upgradeToAuthor(testEmail, testVerificationCode));
         
         assertEquals("User is already an author", exception.getMessage());
-        verify(userMapper, never()).updateByPrimaryKeySelective(any());
+        verify(userRepository, never()).save(any());
     }
 
     @Test
     void upgradeToAuthor_InvalidVerificationCode() {
         // Given
-        when(userMapper.selectByEmail(testEmail)).thenReturn(testUser);
+        when(userRepository.findByEmail(testEmail)).thenReturn(testUser);
         when(mailService.verifyEmail(testEmail, testVerificationCode)).thenReturn(false);
 
         // When & Then
@@ -118,7 +118,7 @@ class AuthorServiceTest {
             () -> authorService.upgradeToAuthor(testEmail, testVerificationCode));
         
         assertEquals("Invalid verification code or code expired", exception.getMessage());
-        verify(userMapper, never()).updateByPrimaryKeySelective(any());
+        verify(userRepository, never()).save(any());
     }
 
     @Test
@@ -128,7 +128,7 @@ class AuthorServiceTest {
             () -> authorService.upgradeToAuthor("", testVerificationCode));
         
         assertEquals("Email is required", exception.getMessage());
-        verify(userMapper, never()).updateByPrimaryKeySelective(any());
+        verify(userRepository, never()).save(any());
     }
 
     @Test
@@ -138,6 +138,6 @@ class AuthorServiceTest {
             () -> authorService.upgradeToAuthor(null, testVerificationCode));
         
         assertEquals("Email is required", exception.getMessage());
-        verify(userMapper, never()).updateByPrimaryKeySelective(any());
+        verify(userRepository, never()).save(any());
     }
 }

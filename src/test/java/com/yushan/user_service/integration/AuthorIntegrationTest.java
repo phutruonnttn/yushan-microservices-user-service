@@ -2,12 +2,9 @@ package com.yushan.user_service.integration;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.yushan.user_service.TestcontainersConfiguration;
-import com.yushan.user_service.config.DatabaseConfig;
-import com.yushan.user_service.dao.UserMapper;
+import com.yushan.user_service.repository.UserRepository;
 import com.yushan.user_service.entity.User;
 import com.yushan.user_service.enums.ErrorCode;
-import com.yushan.user_service.enums.Gender;
-import com.yushan.user_service.enums.UserStatus;
 import com.yushan.user_service.service.MailService;
 import com.yushan.user_service.util.JwtUtil;
 import com.yushan.user_service.util.MailUtil;
@@ -23,7 +20,6 @@ import org.springframework.test.context.ActiveProfiles;
 import org.springframework.test.context.TestPropertySource;
 import org.springframework.test.web.servlet.MockMvc;
 import org.springframework.test.web.servlet.setup.MockMvcBuilders;
-import org.springframework.transaction.annotation.Transactional;
 import org.springframework.web.context.WebApplicationContext;
 
 import java.util.Date;
@@ -54,7 +50,6 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 @SpringBootTest
 @ActiveProfiles("integration-test")
 @Import(TestcontainersConfiguration.class)
-@Transactional
 @TestPropertySource(properties = {
         "spring.kafka.bootstrap-servers=",
         "spring.kafka.enabled=false",
@@ -70,7 +65,7 @@ public class AuthorIntegrationTest {
     private WebApplicationContext context;
 
     @Autowired
-    private UserMapper userMapper;
+    private UserRepository userRepository;
 
     @Autowired
     private JwtUtil jwtUtil;
@@ -105,14 +100,24 @@ public class AuthorIntegrationTest {
         when(mailService.verifyEmail(anyString(), eq("123456"))).thenReturn(true);
         when(mailService.verifyEmail(anyString(), eq("654321"))).thenReturn(false);
 
+        // Delete existing users if exist (from previous test runs)
+        User existingRegular = userRepository.findByEmail("regular@example.com");
+        if (existingRegular != null) {
+            userRepository.delete(existingRegular.getUuid());
+        }
+        User existingAuthor = userRepository.findByEmail("author@example.com");
+        if (existingAuthor != null) {
+            userRepository.delete(existingAuthor.getUuid());
+        }
+
         // Create a regular user for testing
         regularUser = createTestUser("regular@example.com", "regularUser", "password123", false);
-        userMapper.insert(regularUser);
+        userRepository.save(regularUser);
         regularUserToken = jwtUtil.generateAccessToken(regularUser);
 
         // Create an existing author for testing
         authorUser = createTestUser("author@example.com", "authorUser", "password123", true);
-        userMapper.insert(authorUser);
+        userRepository.save(authorUser);
     }
 
     @Test
@@ -159,7 +164,7 @@ public class AuthorIntegrationTest {
                 .andExpect(jsonPath("$.data.isAuthor").value(true));
 
         // Verify database state
-        User updatedUser = userMapper.selectByEmail("regular@example.com");
+        User updatedUser = userRepository.findByEmail("regular@example.com");
         assertThat(updatedUser.getIsAuthor()).isTrue();
     }
 
@@ -177,7 +182,7 @@ public class AuthorIntegrationTest {
                 .andExpect(jsonPath("$.message").value("Invalid verification code or code expired"));
 
         // Verify database state has not changed
-        User notUpdatedUser = userMapper.selectByEmail("regular@example.com");
+        User notUpdatedUser = userRepository.findByEmail("regular@example.com");
         assertThat(notUpdatedUser.getIsAuthor()).isFalse();
     }
 

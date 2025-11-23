@@ -1,6 +1,6 @@
 package com.yushan.user_service.service;
 
-import com.yushan.user_service.dao.UserMapper;
+import com.yushan.user_service.repository.UserRepository;
 import com.yushan.user_service.dto.AdminUserFilterDTO;
 import com.yushan.user_service.dto.PageResponseDTO;
 import com.yushan.user_service.dto.UserProfileResponseDTO;
@@ -20,7 +20,7 @@ import java.util.stream.Collectors;
 public class AdminService {
 
     @Autowired
-    private UserMapper userMapper;
+    private UserRepository userRepository;
 
     @Autowired
     private UserService userService;
@@ -34,7 +34,7 @@ public class AdminService {
         }
 
         // Find user by email
-        User user = userMapper.selectByEmail(email.trim().toLowerCase(java.util.Locale.ROOT));
+        User user = userRepository.findByEmail(email.trim().toLowerCase(java.util.Locale.ROOT));
         if (user == null) {
             throw new IllegalArgumentException("User not found with email: " + email);
         }
@@ -46,7 +46,7 @@ public class AdminService {
 
         // Update user to admin
         user.promoteToAdmin();
-        userMapper.updateByPrimaryKeySelective(user);
+        userRepository.save(user);
 
         // Return updated user profile
         return userService.getUserProfile(user.getUuid());
@@ -54,9 +54,9 @@ public class AdminService {
 
     public PageResponseDTO<UserProfileResponseDTO> listUsers(AdminUserFilterDTO filter) {
         int offset = filter.getPage() * filter.getSize();
-        long totalElements = userMapper.countUsersForAdmin(filter);
+        long totalElements = userRepository.countUsersForAdmin(filter);
 
-        List<User> users = userMapper.selectUsersForAdmin(filter, offset);
+        List<User> users = userRepository.findUsersForAdmin(filter, offset);
 
         List<UserProfileResponseDTO> userProfiles = users.stream()
                 .map(this::mapToProfileResponse)
@@ -66,7 +66,7 @@ public class AdminService {
     }
 
     public void updateUserStatus(UUID userUuid, UserStatus newStatus) {
-        User user = userMapper.selectByPrimaryKey(userUuid);
+        User user = userRepository.findById(userUuid);
         if (user == null) {
             throw new ResourceNotFoundException("User not found with UUID: " + userUuid);
         }
@@ -76,7 +76,7 @@ public class AdminService {
         userToUpdate.changeStatus(newStatus);
         userToUpdate.setUpdateTime(new Date());
 
-        userMapper.updateByPrimaryKeySelective(userToUpdate);
+        userRepository.save(userToUpdate);
     }
 
     private UserProfileResponseDTO mapToProfileResponse(User user) {
