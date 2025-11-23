@@ -1,6 +1,6 @@
 package com.yushan.user_service.service;
 
-import com.yushan.user_service.dao.UserMapper;
+import com.yushan.user_service.repository.UserRepository;
 import com.yushan.user_service.dto.AdminUserFilterDTO;
 import com.yushan.user_service.dto.PageResponseDTO;
 import com.yushan.user_service.dto.UserProfileResponseDTO;
@@ -29,7 +29,7 @@ import static org.mockito.Mockito.*;
 class AdminServiceTest {
 
     @Mock
-    private UserMapper userMapper;
+    private UserRepository userRepository;
 
     @InjectMocks
     private AdminService adminService;
@@ -59,8 +59,8 @@ class AdminServiceTest {
             int offset = 0;
             List<User> users = Collections.singletonList(testUser);
 
-            when(userMapper.countUsersForAdmin(filter)).thenReturn(1L);
-            when(userMapper.selectUsersForAdmin(filter, offset)).thenReturn(users);
+            when(userRepository.countUsersForAdmin(filter)).thenReturn(1L);
+            when(userRepository.findUsersForAdmin(filter, offset)).thenReturn(users);
 
             // When
             PageResponseDTO<UserProfileResponseDTO> result = adminService.listUsers(filter);
@@ -69,8 +69,8 @@ class AdminServiceTest {
             assertEquals(1, result.getTotalElements());
             assertEquals(1, result.getContent().size());
             assertEquals(testUser.getUsername(), result.getContent().get(0).getUsername());
-            verify(userMapper).countUsersForAdmin(filter);
-            verify(userMapper).selectUsersForAdmin(filter, offset);
+            verify(userRepository).countUsersForAdmin(filter);
+            verify(userRepository).findUsersForAdmin(filter, offset);
         }
     }
 
@@ -81,13 +81,13 @@ class AdminServiceTest {
         @DisplayName("Should update user status successfully")
         void shouldUpdateStatus() {
             // Given
-            when(userMapper.selectByPrimaryKey(testUserUuid)).thenReturn(testUser);
+            when(userRepository.findById(testUserUuid)).thenReturn(testUser);
 
             // When
             adminService.updateUserStatus(testUserUuid, UserStatus.BANNED);
 
             // Then
-            verify(userMapper).updateByPrimaryKeySelective(argThat(user ->
+            verify(userRepository).save(argThat(user ->
                     user.getUuid().equals(testUserUuid) &&
                             user.getStatus().equals(UserStatus.BANNED.ordinal())
             ));
@@ -97,12 +97,12 @@ class AdminServiceTest {
         @DisplayName("Should throw ResourceNotFoundException when user to update is not found")
         void shouldThrowWhenUpdatingNonExistentUser() {
             // Given
-            when(userMapper.selectByPrimaryKey(testUserUuid)).thenReturn(null);
+            when(userRepository.findById(testUserUuid)).thenReturn(null);
 
             // When & Then
             assertThrows(ResourceNotFoundException.class, () ->
                     adminService.updateUserStatus(testUserUuid, UserStatus.BANNED));
-            verify(userMapper, never()).updateByPrimaryKeySelective(any());
+            verify(userRepository, never()).save(any());
         }
     }
 }

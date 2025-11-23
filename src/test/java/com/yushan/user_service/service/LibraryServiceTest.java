@@ -3,8 +3,7 @@ package com.yushan.user_service.service;
 import com.yushan.user_service.client.ContentServiceClient;
 import com.yushan.user_service.client.dto.ChapterInfoDTO;
 import com.yushan.user_service.client.dto.NovelInfoDTO;
-import com.yushan.user_service.dao.LibraryMapper;
-import com.yushan.user_service.dao.NovelLibraryMapper;
+import com.yushan.user_service.repository.UserRepository;
 import com.yushan.user_service.dto.ApiResponse;
 import com.yushan.user_service.dto.LibraryResponseDTO;
 import com.yushan.user_service.dto.PageResponseDTO;
@@ -35,10 +34,7 @@ class LibraryServiceTest {
     private ContentServiceClient contentServiceClient;
 
     @Mock
-    private NovelLibraryMapper novelLibraryMapper;
-
-    @Mock
-    private LibraryMapper libraryMapper;
+    private UserRepository userRepository;
 
     @InjectMocks
     private LibraryService libraryService;
@@ -85,16 +81,16 @@ class LibraryServiceTest {
                 .thenReturn(createApiResponse(novelInfo));
         when(contentServiceClient.getChaptersByIds(Collections.singletonList(chapterId)))
                 .thenReturn(createApiResponse(Collections.singletonList(chapterInfo)));
-        when(novelLibraryMapper.selectByUserIdAndNovelId(userId, novelId))
+        when(userRepository.findNovelLibraryByUserIdAndNovelId(userId, novelId))
                 .thenReturn(null);
-        when(libraryMapper.selectByUserId(userId))
+        when(userRepository.findLibraryByUserId(userId))
                 .thenReturn(library);
 
         // When
         libraryService.addNovelToLibrary(userId, novelId, chapterId);
 
         // Then
-        verify(novelLibraryMapper).insertSelective(any(NovelLibrary.class));
+        verify(userRepository).saveNovelLibrary(any(NovelLibrary.class));
     }
 
     @Test
@@ -145,7 +141,7 @@ class LibraryServiceTest {
                 .thenReturn(createApiResponse(novelInfo));
         when(contentServiceClient.getChaptersByIds(Collections.singletonList(chapterId)))
                 .thenReturn(createApiResponse(Collections.singletonList(chapterInfo)));
-        when(novelLibraryMapper.selectByUserIdAndNovelId(userId, novelId))
+        when(userRepository.findNovelLibraryByUserIdAndNovelId(userId, novelId))
                 .thenReturn(novelLibrary);
 
         // When & Then
@@ -161,9 +157,9 @@ class LibraryServiceTest {
                 .thenReturn(createApiResponse(novelInfo));
         when(contentServiceClient.getChaptersByIds(Collections.singletonList(chapterId)))
                 .thenReturn(createApiResponse(Collections.singletonList(chapterInfo)));
-        when(novelLibraryMapper.selectByUserIdAndNovelId(userId, novelId))
+        when(userRepository.findNovelLibraryByUserIdAndNovelId(userId, novelId))
                 .thenReturn(null);
-        when(libraryMapper.selectByUserId(userId))
+        when(userRepository.findLibraryByUserId(userId))
                 .thenReturn(null);
 
         // When & Then
@@ -177,20 +173,20 @@ class LibraryServiceTest {
     @Test
     void removeNovelFromLibrary_Success() {
         // Given
-        when(novelLibraryMapper.selectByUserIdAndNovelId(userId, novelId))
+        when(userRepository.findNovelLibraryByUserIdAndNovelId(userId, novelId))
                 .thenReturn(novelLibrary);
 
         // When
         libraryService.removeNovelFromLibrary(userId, novelId);
 
         // Then
-        verify(novelLibraryMapper).deleteByPrimaryKey(novelLibrary.getId());
+        verify(userRepository).deleteNovelLibrary(novelLibrary.getId());
     }
 
     @Test
     void removeNovelFromLibrary_NovelNotInLibrary() {
         // Given
-        when(novelLibraryMapper.selectByUserIdAndNovelId(userId, novelId))
+        when(userRepository.findNovelLibraryByUserIdAndNovelId(userId, novelId))
                 .thenReturn(null);
 
         // When & Then
@@ -210,14 +206,14 @@ class LibraryServiceTest {
                 createNovelLibrary(2, 2),
                 createNovelLibrary(3, 3)
         );
-        when(novelLibraryMapper.selectByUserIdAndNovelIds(userId, novelIds))
+        when(userRepository.findNovelLibrariesByUserIdAndNovelIds(userId, novelIds))
                 .thenReturn(libraryEntries);
 
         // When
         libraryService.batchRemoveNovelsFromLibrary(userId, novelIds);
 
         // Then
-        verify(novelLibraryMapper).deleteByUserIdAndNovelIds(userId, novelIds);
+        verify(userRepository).deleteNovelLibrariesByUserIdAndNovelIds(userId, novelIds);
     }
 
     @Test
@@ -226,8 +222,8 @@ class LibraryServiceTest {
         libraryService.batchRemoveNovelsFromLibrary(userId, Collections.emptyList());
 
         // Then
-        verify(novelLibraryMapper, never()).selectByUserIdAndNovelIds(any(), any());
-        verify(novelLibraryMapper, never()).deleteByUserIdAndNovelIds(any(), any());
+        verify(userRepository, never()).findNovelLibrariesByUserIdAndNovelIds(any(), any());
+        verify(userRepository, never()).deleteNovelLibrariesByUserIdAndNovelIds(any(), any());
     }
 
     @Test
@@ -238,7 +234,7 @@ class LibraryServiceTest {
                 createNovelLibrary(1, 1),
                 createNovelLibrary(2, 2)
         );
-        when(novelLibraryMapper.selectByUserIdAndNovelIds(userId, novelIds))
+        when(userRepository.findNovelLibrariesByUserIdAndNovelIds(userId, novelIds))
                 .thenReturn(libraryEntries);
 
         // When & Then
@@ -271,10 +267,10 @@ class LibraryServiceTest {
                 new ChapterInfoDTO(10, 1, 1)
         );
 
-        when(novelLibraryMapper.selectNovelIdsByUserId(userId)).thenReturn(allNovelIds);
+        when(userRepository.findNovelIdsByUserId(userId)).thenReturn(allNovelIds);
         when(contentServiceClient.getNovelsByIds(allNovelIds)).thenReturn(createApiResponse(allNovels));
-        when(novelLibraryMapper.countByUserId(eq(userId), anyList())).thenReturn(2L);
-        when(novelLibraryMapper.selectByUserIdWithPagination(eq(userId), anyList(), anyInt(), anyInt(), anyString(), anyString()))
+        when(userRepository.countNovelLibrariesByUserId(eq(userId), anyList())).thenReturn(2L);
+        when(userRepository.findNovelLibrariesByUserIdWithPagination(eq(userId), anyList(), anyInt(), anyInt(), anyString(), anyString()))
                 .thenReturn(paginatedLibraries);
         // 使用去重后的 ID 列表进行 mock
         when(contentServiceClient.getChaptersByIds(distinctChapterIds)).thenReturn(createApiResponse(chapters));
@@ -292,7 +288,7 @@ class LibraryServiceTest {
     @Test
     void getUserLibrary_EmptyLibrary() {
         // Given
-        when(novelLibraryMapper.selectNovelIdsByUserId(userId))
+        when(userRepository.findNovelIdsByUserId(userId))
                 .thenReturn(Collections.emptyList());
 
         // When
@@ -312,7 +308,7 @@ class LibraryServiceTest {
                 new NovelInfoDTO(2, "Novel 2", "Author 2", "c2.jpg", 60, "DRAFT")
         );
 
-        when(novelLibraryMapper.selectNovelIdsByUserId(userId)).thenReturn(novelIds);
+        when(userRepository.findNovelIdsByUserId(userId)).thenReturn(novelIds);
         when(contentServiceClient.getNovelsByIds(novelIds))
                 .thenReturn(createApiResponse(novels));
 
@@ -333,14 +329,14 @@ class LibraryServiceTest {
                 .thenReturn(createApiResponse(novelInfo));
         when(contentServiceClient.getChaptersByIds(Collections.singletonList(chapterId)))
                 .thenReturn(createApiResponse(Collections.singletonList(chapterInfo)));
-        when(novelLibraryMapper.selectByUserIdAndNovelId(userId, novelId))
+        when(userRepository.findNovelLibraryByUserIdAndNovelId(userId, novelId))
                 .thenReturn(novelLibrary);
 
         // When
         LibraryResponseDTO result = libraryService.updateReadingProgress(userId, novelId, chapterId);
 
         // Then
-        verify(novelLibraryMapper).updateByPrimaryKeySelective(novelLibrary);
+        verify(userRepository).saveNovelLibrary(novelLibrary);
         assertThat(result).isNotNull();
         assertThat(result.getNovelId()).isEqualTo(novelId);
         assertThat(result.getProgress()).isEqualTo(chapterId);
@@ -361,7 +357,7 @@ class LibraryServiceTest {
                 .thenReturn(createApiResponse(novelInfo));
         when(contentServiceClient.getChaptersByIds(Collections.singletonList(chapterId)))
                 .thenReturn(createApiResponse(Collections.singletonList(chapterInfo)));
-        when(novelLibraryMapper.selectByUserIdAndNovelId(userId, novelId))
+        when(userRepository.findNovelLibraryByUserIdAndNovelId(userId, novelId))
                 .thenReturn(null);
 
         // When & Then
@@ -375,7 +371,7 @@ class LibraryServiceTest {
     @Test
     void getNovel_Success() {
         // Given
-        when(novelLibraryMapper.selectByUserIdAndNovelId(userId, novelId))
+        when(userRepository.findNovelLibraryByUserIdAndNovelId(userId, novelId))
                 .thenReturn(novelLibrary);
         when(contentServiceClient.getNovelById(novelId))
                 .thenReturn(createApiResponse(novelInfo));
@@ -396,7 +392,7 @@ class LibraryServiceTest {
     void getNovel_NoProgressChapter() {
         // Given
         novelLibrary.setProgress(null);
-        when(novelLibraryMapper.selectByUserIdAndNovelId(userId, novelId))
+        when(userRepository.findNovelLibraryByUserIdAndNovelId(userId, novelId))
                 .thenReturn(novelLibrary);
         when(contentServiceClient.getNovelById(novelId))
                 .thenReturn(createApiResponse(novelInfo));
@@ -414,7 +410,7 @@ class LibraryServiceTest {
     @Test
     void getNovel_NovelNotInLibrary() {
         // Given
-        when(novelLibraryMapper.selectByUserIdAndNovelId(userId, novelId))
+        when(userRepository.findNovelLibraryByUserIdAndNovelId(userId, novelId))
                 .thenReturn(null);
 
         // When & Then
@@ -428,7 +424,7 @@ class LibraryServiceTest {
     @Test
     void novelFromLibrary_Success() {
         // Given
-        when(novelLibraryMapper.selectByUserIdAndNovelId(userId, novelId))
+        when(userRepository.findNovelLibraryByUserIdAndNovelId(userId, novelId))
                 .thenReturn(novelLibrary);
 
         // When
@@ -441,7 +437,7 @@ class LibraryServiceTest {
     @Test
     void novelFromLibrary_NotFound() {
         // Given
-        when(novelLibraryMapper.selectByUserIdAndNovelId(userId, novelId))
+        when(userRepository.findNovelLibraryByUserIdAndNovelId(userId, novelId))
                 .thenReturn(null);
 
         // When
@@ -456,7 +452,7 @@ class LibraryServiceTest {
     @Test
     void novelInLibrary_True() {
         // Given
-        when(novelLibraryMapper.selectByUserIdAndNovelId(userId, novelId))
+        when(userRepository.findNovelLibraryByUserIdAndNovelId(userId, novelId))
                 .thenReturn(novelLibrary);
 
         // When
@@ -469,7 +465,7 @@ class LibraryServiceTest {
     @Test
     void novelInLibrary_False() {
         // Given
-        when(novelLibraryMapper.selectByUserIdAndNovelId(userId, novelId))
+        when(userRepository.findNovelLibraryByUserIdAndNovelId(userId, novelId))
                 .thenReturn(null);
 
         // When
@@ -490,7 +486,7 @@ class LibraryServiceTest {
                 createNovelLibrary(2, 2)
         );
 
-        when(novelLibraryMapper.selectByUserIdAndNovelIds(userId, novelIds))
+        when(userRepository.findNovelLibrariesByUserIdAndNovelIds(userId, novelIds))
                 .thenReturn(libraryEntries);
 
         // When
