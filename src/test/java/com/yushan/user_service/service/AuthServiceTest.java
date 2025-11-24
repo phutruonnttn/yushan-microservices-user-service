@@ -39,6 +39,9 @@ public class AuthServiceTest {
     @Mock
     private UserEventProducer userEventProducer;
 
+    @Mock
+    private TransactionAwareKafkaPublisher transactionAwareKafkaPublisher;
+
     @InjectMocks
     private AuthService authService;
 
@@ -124,7 +127,6 @@ public class AuthServiceTest {
         when(userRepository.findByEmail(userEmail)).thenReturn(null);
         when(jwtUtil.generateAccessToken(any(User.class))).thenReturn("fake-access-token");
         when(jwtUtil.generateRefreshToken(any(User.class))).thenReturn("fake-refresh-token");
-        doNothing().when(userEventProducer).sendUserRegisteredEvent(any());
 
         // When
         UserAuthResponseDTO response = authService.registerAndCreateResponse(registrationDTO);
@@ -132,7 +134,7 @@ public class AuthServiceTest {
         // Then
         verify(userRepository).save(any(User.class));
         verify(userRepository).saveLibrary(any(Library.class));
-        verify(userEventProducer).sendUserRegisteredEvent(any());
+        verify(transactionAwareKafkaPublisher).publishAfterCommit(any(Runnable.class));
         verify(jwtUtil).generateAccessToken(any(User.class));
         verify(jwtUtil).generateRefreshToken(any(User.class));
 
@@ -184,13 +186,12 @@ public class AuthServiceTest {
         when(userRepository.findByEmail(userEmail)).thenReturn(testUser);
         when(jwtUtil.generateAccessToken(testUser)).thenReturn("new-access-token");
         when(jwtUtil.generateRefreshToken(testUser)).thenReturn("new-refresh-token");
-        doNothing().when(userEventProducer).sendUserLoggedInEvent(any());
 
         // When
         UserAuthResponseDTO response = authService.loginAndCreateResponse(userEmail, userPassword);
 
         // Then
-        verify(userEventProducer).sendUserLoggedInEvent(any());
+        verify(transactionAwareKafkaPublisher).publishAfterCommit(any(Runnable.class));
         verify(userRepository).save(any(User.class));
 
         assertThat(response).isNotNull();

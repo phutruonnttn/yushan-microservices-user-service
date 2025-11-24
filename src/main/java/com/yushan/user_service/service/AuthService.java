@@ -33,6 +33,9 @@ public class AuthService {
     @Autowired
     private UserEventProducer userEventProducer;
 
+    @Autowired
+    private TransactionAwareKafkaPublisher transactionAwareKafkaPublisher;
+
     @Value("${jwt.access-token.expiration}")
     private long accessTokenExpiration;
 
@@ -91,16 +94,20 @@ public class AuthService {
 
         User user = register(registrationDTO);
 
-        UserRegisteredEvent event = new UserRegisteredEvent(
-                user.getUuid(),
-                user.getUsername(),
-                user.getEmail(),
-                user.getCreateTime(),
-                user.getUpdateTime(),
-                user.getLastLogin(),
-                user.getLastActive()
-        );
-        userEventProducer.sendUserRegisteredEvent(event);
+        // Publish Kafka event AFTER transaction commit
+        final User finalUser = user;
+        transactionAwareKafkaPublisher.publishAfterCommit(() -> {
+            UserRegisteredEvent event = new UserRegisteredEvent(
+                    finalUser.getUuid(),
+                    finalUser.getUsername(),
+                    finalUser.getEmail(),
+                    finalUser.getCreateTime(),
+                    finalUser.getUpdateTime(),
+                    finalUser.getLastLogin(),
+                    finalUser.getLastActive()
+            );
+            userEventProducer.sendUserRegisteredEvent(event);
+        });
 
         // Generate JWT tokens for auto-login after registration
         String accessToken = jwtUtil.generateAccessToken(user);
@@ -151,17 +158,6 @@ public class AuthService {
         String accessToken = jwtUtil.generateAccessToken(user);
         String refreshToken = jwtUtil.generateRefreshToken(user);
 
-        UserLoggedInEvent event = new UserLoggedInEvent(
-                user.getUuid(),
-                user.getUsername(),
-                user.getEmail(),
-                user.getCreateTime(),
-                user.getUpdateTime(),
-                user.getLastLogin(),
-                user.getLastActive()
-        );
-        userEventProducer.sendUserLoggedInEvent(event);
-
         Date now = new Date();
         user.updateLastLogin(now);
         user.updateLastActive(now);
@@ -175,6 +171,21 @@ public class AuthService {
         responseDTO.setExpiresIn(accessTokenExpiration);
 
         userRepository.save(user);
+
+        // Publish Kafka event AFTER transaction commit (if any) or immediately
+        final User finalUser = user;
+        transactionAwareKafkaPublisher.publishAfterCommit(() -> {
+            UserLoggedInEvent event = new UserLoggedInEvent(
+                    finalUser.getUuid(),
+                    finalUser.getUsername(),
+                    finalUser.getEmail(),
+                    finalUser.getCreateTime(),
+                    finalUser.getUpdateTime(),
+                    finalUser.getLastLogin(),
+                    finalUser.getLastActive()
+            );
+            userEventProducer.sendUserLoggedInEvent(event);
+        });
         return responseDTO;
     }
 
