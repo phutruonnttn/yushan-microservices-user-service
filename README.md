@@ -6,6 +6,27 @@
 
 User Service is one of the main microservices of Yushan Platform (Phase 2), responsible for managing users, authentication, and user-related operations. This service uses JWT for authentication, Kafka to publish events, and Redis for caching.
 
+### 🔐 Authentication Architecture
+
+**JWT Validation is Centralized at API Gateway Level**
+
+- **Primary Flow**: All requests must go through API Gateway which validates JWT tokens
+- **Gateway-Validated Requests**: Services trust requests with `X-Gateway-Validated: true` header
+- **HMAC Signature Verification**: Services verify HMAC-SHA256 signatures to prevent header forgery attacks
+- **Backward Compatibility**: Services can still validate JWT tokens directly for inter-service calls
+
+**Filter Chain**:
+1. `GatewayAuthenticationFilter` - Processes gateway-validated requests with HMAC signature verification (preferred)
+2. `JwtAuthenticationFilter` - Validates JWT tokens (backward compatibility)
+
+**Security Features**:
+- **HMAC Signature**: Gateway signs requests with HMAC-SHA256 using shared secret (`GATEWAY_HMAC_SECRET`)
+- **Timestamp Validation**: Prevents replay attacks (5-minute tolerance)
+- **Constant-Time Comparison**: Prevents timing attacks during signature verification
+- **Database Verification**: User Service additionally verifies user exists and is active in database
+- **User Status Check**: `GatewayAuthenticationFilter` checks user status from database to ensure user is active (`isEnabled()`)
+- **Disabled User Rejection**: Disabled/suspended users are rejected with **403 Forbidden** response
+
 ## 🚀 Tech Stack
 
 - **Framework**: Spring Boot 3.4.10
@@ -62,6 +83,8 @@ Before setting up User Service, ensure you have:
 3. **Eureka Service Registry** running
 4. **Config Server** running
 5. **PostgreSQL 15+** (for user data storage)
+   - **Note**: Docker Compose maps PostgreSQL to external port **5437** (to avoid conflict with local PostgreSQL on port 5432)
+   - Internal port remains 5432 (container-to-container communication)
 6. **Redis** (for session management and caching)
 7. **Kafka** (for event publishing)
 
@@ -254,9 +277,9 @@ User Service exposes metrics through:
 - Kill process or change port in application.yml
 
 **Problem: Database connection fails**
-- Verify PostgreSQL is running: `docker ps | grep yushan-postgres`
+- Verify PostgreSQL is running: `docker ps | grep yushan-user-postgres`
 - Check database credentials in application.yml
-- Test connection: `psql -h localhost -U yushan_user -d yushan_user`
+- Test connection: `psql -h localhost -p 5437 -U yushan_user -d yushan_user` (Note: External port is 5437, internal port is 5432)
 
 **Problem: Redis connection fails**
 - Verify Redis is running: `docker ps | grep redis`
@@ -269,7 +292,9 @@ User Service exposes metrics through:
 - Clean and rebuild: `./mvnw clean install -U`
 
 **Problem: JWT token validation fails**
-- Check JWT_SECRET environment variable
+- ⚠️ **Note**: JWT validation is now handled at API Gateway level
+- Services only validate JWT for backward compatibility (inter-service calls)
+- Check JWT_SECRET environment variable (must match between Gateway and User Service)
 - Verify token expiration settings
 - Check system clock synchronization
 - Review token format in requests
@@ -303,11 +328,29 @@ User Service exposes metrics through:
 ---
 
 ## Inter-Service Communication
+
 The User Service communicates with:
 - **Engagement Service**: User profile data for comments/reviews
 - **Gamification Service**: User achievements and levels
 - **Analytics Service**: User behavior tracking
 - **Content Service**: Author verification and permissions
+
+### FeignAuthConfig
+
+The service uses `FeignAuthConfig` to forward authentication headers for inter-service calls:
+
+**Priority**:
+1. **Gateway-Validated Requests** (Preferred): If incoming request has `X-Gateway-Validated: true`, forward all gateway headers:
+   - `X-Gateway-Validated: true`
+   - `X-User-Id`, `X-User-Email`, `X-User-Username`, `X-User-Role`, `X-User-Status`
+   - `X-Gateway-Timestamp`, `X-Gateway-Signature` (HMAC signature)
+2. **Backward Compatibility**: If no gateway headers, forward `Authorization` header (JWT token)
+
+This ensures that:
+- Gateway-validated requests maintain their authentication context across services
+- HMAC signatures are preserved for security verification
+- User status is forwarded to prevent disabled users from accessing resources
+- Direct service calls (bypassing Gateway) still work with JWT tokens
 
 ---
 
