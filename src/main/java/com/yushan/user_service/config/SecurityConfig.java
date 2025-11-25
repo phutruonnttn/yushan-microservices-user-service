@@ -2,6 +2,7 @@ package com.yushan.user_service.config;
 
 import com.yushan.user_service.security.CustomMethodSecurityExpressionHandler;
 import com.yushan.user_service.security.CustomUserDetailsService;
+import com.yushan.user_service.security.GatewayAuthenticationFilter;
 import com.yushan.user_service.security.JwtAuthenticationEntryPoint;
 import com.yushan.user_service.security.JwtAuthenticationFilter;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -29,6 +30,9 @@ public class SecurityConfig {
     
     @Autowired
     private JwtAuthenticationEntryPoint jwtAuthenticationEntryPoint;
+    
+    @Autowired
+    private GatewayAuthenticationFilter gatewayAuthenticationFilter;
     
     @Autowired
     private JwtAuthenticationFilter jwtAuthenticationFilter;
@@ -136,7 +140,10 @@ public class SecurityConfig {
                 .anyRequest().authenticated()
             )
             
-            // Add JWT filter before UsernamePasswordAuthenticationFilter
+            // Add Gateway filter first (for gateway-validated requests)
+            // JWT validation is handled at Gateway level, services trust gateway-validated requests
+            .addFilterBefore(gatewayAuthenticationFilter, UsernamePasswordAuthenticationFilter.class)
+            // Then add JWT filter (for backward compatibility with direct service calls or old Feign calls)
             .addFilterBefore(jwtAuthenticationFilter, UsernamePasswordAuthenticationFilter.class);
         
         return http.build();

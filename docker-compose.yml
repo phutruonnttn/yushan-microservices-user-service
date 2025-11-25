@@ -9,7 +9,7 @@ services:
       POSTGRES_PASSWORD: ${DB_PASSWORD:-change_me_in_production}
       POSTGRES_DB: ${DB_NAME:-yushan_user}
     ports:
-      - "5432:5432"
+      - "5437:5432"  # External:Internal (avoiding conflict with local PostgreSQL)
     volumes:
       - user_pg_data:/var/lib/postgresql/data
     healthcheck:
@@ -72,10 +72,15 @@ services:
       # Eureka Configuration
       EUREKA_CLIENT_SERVICEURL_DEFAULTZONE: http://yushan-eureka-registry:8761/eureka/
 
-      # JWT Configuration
-      JWT_SECRET: ${JWT_SECRET:-YushanUserServiceJWTSecretKey2024ForSecureTokenGeneration}
-      JWT_ACCESS_TOKEN_EXPIRATION: ${JWT_ACCESS_TOKEN_EXPIRATION:-900000}
-      JWT_REFRESH_TOKEN_EXPIRATION: ${JWT_REFRESH_TOKEN_EXPIRATION:-604800000}
+      # JWT Configuration (must match config-server and Gateway)
+      JWT_SECRET: ${JWT_SECRET:-yushan-micro-service-secret-key-for-jwt-token-generation-and-validation-2024}
+      JWT_ISSUER: ${JWT_ISSUER:-yushan-micro-service}
+      JWT_ALGORITHM: ${JWT_ALGORITHM:-HS256}
+      JWT_ACCESS_TOKEN_EXPIRATION: ${JWT_ACCESS_TOKEN_EXPIRATION:-3600000}
+      JWT_REFRESH_TOKEN_EXPIRATION: ${JWT_REFRESH_TOKEN_EXPIRATION:-86400000}
+
+      # Gateway HMAC Configuration
+      GATEWAY_HMAC_SECRET: ${GATEWAY_HMAC_SECRET:-yushan-gateway-hmac-secret-key-for-request-signature-2024}
 
       # Mail Configuration
       MAIL_HOST: ${MAIL_HOST}
