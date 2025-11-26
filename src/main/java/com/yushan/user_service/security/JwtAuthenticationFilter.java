@@ -134,10 +134,9 @@ public class JwtAuthenticationFilter extends OncePerRequestFilter {
         String method = request.getMethod();
         
         // Skip JWT filtering for these paths
-        return path.startsWith("/api/auth/login") ||
-               path.startsWith("/api/auth/register") ||
-               path.startsWith("/api/auth/refresh") ||
-               path.startsWith("/api/public/") ||
+        return path.startsWith("/api/v1/auth/") ||
+               path.startsWith("/api/v1/public/") ||
+               path.startsWith("/api/v1/internal/") ||
                path.startsWith("/actuator/") ||
                path.equals("/error") ||
                // Skip OPTIONS requests (CORS preflight)

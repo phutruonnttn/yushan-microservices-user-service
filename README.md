@@ -168,6 +168,12 @@ Instances currently registered with Eureka:
 - `POST /api/v1/admin/promote-to-admin` - Promote to Admin
 - `PUT /api/v1/admin/users/{uuid}/status` - Update user status
 
+### Internal Endpoints (Service-to-Service)
+- `GET /api/v1/internal/blocked-users` - Get list of blocked user IDs (SUSPENDED or BANNED)
+  - Used by API Gateway to bootstrap user blocklist on startup
+  - No authentication required (internal network only)
+  - Returns: `List<UUID>` of blocked users
+
 ### Author Endpoints
 - `POST /api/v1/author/send-email-author-verification` - Send author verification email
 - `POST /api/v1/author/upgrade-to-author` - Upgrade to author
@@ -200,9 +206,12 @@ Instances currently registered with Eureka:
 - Author verification
 
 ### 🎯 Event Publishing
-- Kafka events: `UserRegisteredEvent`, `UserLoggedInEvent`
-- Topics: `user.events`, `active`
-- Integration with Gamification Service
+- Kafka events: `UserRegisteredEvent`, `UserLoggedInEvent`, `UserStatusChangedEvent`
+- Topics: `user.events`, `active`, `user-status-events`
+- Integration with Gamification Service and API Gateway
+- **UserStatusChangedEvent**: Published when user status changes (NORMAL ↔ SUSPENDED ↔ BANNED)
+  - Used by API Gateway to update Redis blocklist in real-time
+  - Published AFTER transaction commit (using `TransactionAwareKafkaPublisher`)
 
 ### 🔍 Inter-service Communication
 - Feign Client: `ContentServiceClient` (validate novel/chapter)
@@ -219,7 +228,8 @@ com.yushan.user_service/
 │   ├── UserController.java
 │   ├── LibraryController.java
 │   ├── AdminController.java
-│   └── AuthorController.java
+│   ├── AuthorController.java
+│   └── InternalController.java  # Internal endpoints for service-to-service communication
 ├── service/            # Business logic
 │   ├── AuthService.java
 │   ├── UserService.java
@@ -240,9 +250,11 @@ com.yushan.user_service/
 ├── security/          # Security components
 │   ├── JwtAuthenticationFilter.java
 │   └── CustomUserDetailsService.java
-└── event/             # Kafka producers
+└── event/             # Kafka producers and DTOs
     ├── UserEventProducer.java
-    └── UserActivityEventProducer.java
+    ├── UserActivityEventProducer.java
+    └── dto/
+        └── UserStatusChangedEvent.java
 ```
 
 ## 💾 Database Schema

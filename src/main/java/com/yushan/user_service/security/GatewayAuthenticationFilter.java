@@ -173,10 +173,9 @@ public class GatewayAuthenticationFilter extends OncePerRequestFilter {
         String method = request.getMethod();
         
         // Skip filtering for these paths (same as JwtAuthenticationFilter)
-        return path.startsWith("/api/v1/auth/login") ||
-               path.startsWith("/api/v1/auth/register") ||
-               path.startsWith("/api/v1/auth/refresh") ||
+        return path.startsWith("/api/v1/auth/") ||
                path.startsWith("/api/v1/public/") ||
+               path.startsWith("/api/v1/internal/") ||
                path.startsWith("/actuator/") ||
                path.equals("/error") ||
                // Skip OPTIONS requests (CORS preflight)

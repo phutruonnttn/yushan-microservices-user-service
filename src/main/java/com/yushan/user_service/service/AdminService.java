@@ -7,15 +7,21 @@ import com.yushan.user_service.dto.UserProfileResponseDTO;
 import com.yushan.user_service.entity.User;
 import com.yushan.user_service.enums.Gender;
 import com.yushan.user_service.enums.UserStatus;
+import com.yushan.user_service.event.UserStatusEventProducer;
+import com.yushan.user_service.event.dto.UserStatusChangedEvent;
 import com.yushan.user_service.exception.ResourceNotFoundException;
+import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Service;
+import org.springframework.transaction.annotation.Transactional;
 
+import java.util.ArrayList;
 import java.util.Date;
 import java.util.List;
 import java.util.UUID;
 import java.util.stream.Collectors;
 
+@Slf4j
 @Service
 public class AdminService {
 
@@ -24,6 +30,12 @@ public class AdminService {
 
     @Autowired
     private UserService userService;
+
+    @Autowired
+    private TransactionAwareKafkaPublisher transactionAwareKafkaPublisher;
+    
+    @Autowired
+    private UserStatusEventProducer userStatusEventProducer;
 
     /**
      * Promote user to admin by email
@@ -65,18 +77,54 @@ public class AdminService {
         return new PageResponseDTO<>(userProfiles, totalElements, filter.getPage(), filter.getSize());
     }
 
+    /**
+     * Get list of blocked user IDs (SUSPENDED or BANNED)
+     * Used by API Gateway to bootstrap user blocklist
+     */
+    public List<UUID> getBlockedUserIds() {
+        List<UUID> blockedUserIds = new ArrayList<>();
+        
+        // Get SUSPENDED users
+        AdminUserFilterDTO suspendedFilter = new AdminUserFilterDTO(0, Integer.MAX_VALUE, UserStatus.SUSPENDED, null, null, "createTime", "asc");
+        List<User> suspendedUsers = userRepository.findUsersForAdmin(suspendedFilter, 0);
+        blockedUserIds.addAll(suspendedUsers.stream().map(User::getUuid).collect(Collectors.toList()));
+        
+        // Get BANNED users
+        AdminUserFilterDTO bannedFilter = new AdminUserFilterDTO(0, Integer.MAX_VALUE, UserStatus.BANNED, null, null, "createTime", "asc");
+        List<User> bannedUsers = userRepository.findUsersForAdmin(bannedFilter, 0);
+        blockedUserIds.addAll(bannedUsers.stream().map(User::getUuid).collect(Collectors.toList()));
+        
+        return blockedUserIds;
+    }
+
+    @Transactional
     public void updateUserStatus(UUID userUuid, UserStatus newStatus) {
         User user = userRepository.findById(userUuid);
         if (user == null) {
             throw new ResourceNotFoundException("User not found with UUID: " + userUuid);
         }
 
+        UserStatus oldStatus = UserStatus.fromCode(user.getStatus());
+        
         User userToUpdate = new User();
         userToUpdate.setUuid(userUuid);
         userToUpdate.changeStatus(newStatus);
         userToUpdate.setUpdateTime(new Date());
 
         userRepository.save(userToUpdate);
+        
+        // Publish UserStatusChangedEvent AFTER transaction commit
+        final UUID finalUserUuid = userUuid;
+        final UserStatus finalOldStatus = oldStatus;
+        final UserStatus finalNewStatus = newStatus;
+        transactionAwareKafkaPublisher.publishAfterCommit(() -> {
+            UserStatusChangedEvent event = new UserStatusChangedEvent(
+                finalUserUuid.toString(),
+                finalOldStatus != null ? finalOldStatus.name() : null,
+                finalNewStatus.name()
+            );
+            userStatusEventProducer.sendUserStatusChangedEvent(event);
+        });
     }
 
     private UserProfileResponseDTO mapToProfileResponse(User user) {

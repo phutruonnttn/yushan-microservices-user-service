@@ -121,6 +121,11 @@ public class SecurityConfig {
                 .requestMatchers("/error").permitAll()
                 .requestMatchers("/api/v1/health").permitAll()
                 
+                // Internal endpoints - for service-to-service communication (no authentication required)
+                // These endpoints are only accessible from internal network (API Gateway, other services)
+                // NOT exposed through API Gateway routes (security: internal only)
+                .requestMatchers("/api/v1/internal/**").permitAll()
+                
                 // CORS preflight requests - allow OPTIONS for all endpoints
                 .requestMatchers(HttpMethod.OPTIONS, "/api/**").permitAll()
 
