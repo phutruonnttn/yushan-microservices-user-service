@@ -6,6 +6,7 @@ import com.yushan.user_service.dto.PageResponseDTO;
 import com.yushan.user_service.dto.UserProfileResponseDTO;
 import com.yushan.user_service.entity.User;
 import com.yushan.user_service.enums.UserStatus;
+import com.yushan.user_service.event.UserStatusEventProducer;
 import com.yushan.user_service.exception.ResourceNotFoundException;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
@@ -30,6 +31,12 @@ class AdminServiceTest {
 
     @Mock
     private UserRepository userRepository;
+
+    @Mock
+    private TransactionAwareKafkaPublisher transactionAwareKafkaPublisher;
+
+    @Mock
+    private UserStatusEventProducer userStatusEventProducer;
 
     @InjectMocks
     private AdminService adminService;
@@ -82,6 +89,12 @@ class AdminServiceTest {
         void shouldUpdateStatus() {
             // Given
             when(userRepository.findById(testUserUuid)).thenReturn(testUser);
+            // Mock TransactionAwareKafkaPublisher to execute the Runnable immediately (no transaction in test)
+            doAnswer(invocation -> {
+                Runnable runnable = invocation.getArgument(0);
+                runnable.run();
+                return null;
+            }).when(transactionAwareKafkaPublisher).publishAfterCommit(any(Runnable.class));
 
             // When
             adminService.updateUserStatus(testUserUuid, UserStatus.BANNED);
@@ -91,6 +104,8 @@ class AdminServiceTest {
                     user.getUuid().equals(testUserUuid) &&
                             user.getStatus().equals(UserStatus.BANNED.ordinal())
             ));
+            verify(transactionAwareKafkaPublisher).publishAfterCommit(any(Runnable.class));
+            verify(userStatusEventProducer).sendUserStatusChangedEvent(any());
         }
 
         @Test
